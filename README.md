@@ -94,8 +94,3 @@ python -m py_compile main.py
 - 将权重下载脚本或说明写入 `scripts/` 以方便 CI/部署。
 
 ----
-
-文件位置：`README.md`（已更新）。
-# Onlineclass-student-self-analysis-
-# Onlineclass-student-self-analysis-
-# Onlineclass-student-self-analysis-

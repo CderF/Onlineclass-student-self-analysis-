@@ -1,0 +1,8 @@
+PyQt5>=5.15
+qfluentwidgets>=0.3
+opencv-python>=4.5.5.64
+numpy>=1.21.0
+torch>=1.13.0
+torchvision>=0.14.0
+ultralytics>=8.0.0
+mediapipe>=0.8.9

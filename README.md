@@ -88,9 +88,4 @@ python -m py_compile main.py
 - 无法打开摄像头：请检查系统权限（macOS 需在“系统偏好设置 → 隐私与安全性”允许摄像头访问）。
 - 推理速度慢：可考虑使用更小的模型、降低输入分辨率或使用 GPU 版本的 PyTorch。
 
-## 下一步建议
-
-- 添加 `requirements.txt` 或 `environment.yml` 以便复现环境。
-- 将权重下载脚本或说明写入 `scripts/` 以方便 CI/部署。
-
 ----

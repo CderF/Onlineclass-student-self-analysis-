@@ -88,14 +88,8 @@ python -m py_compile main.py
 - 无法打开摄像头：请检查系统权限（macOS 需在“系统偏好设置 → 隐私与安全性”允许摄像头访问）。
 - 推理速度慢：可考虑使用更小的模型、降低输入分辨率或使用 GPU 版本的 PyTorch。
 
-## 下一步建议
+## 下一步计划
 
-- 添加 `requirements.txt` 或 `environment.yml` 以便复现环境。
-- 将权重下载脚本或说明写入 `scripts/` 以方便 CI/部署。
-
-----
-
-文件位置：`README.md`（已更新）。
-# Onlineclass-student-self-analysis-
-# Onlineclass-student-self-analysis-
-# Onlineclass-student-self-analysis-
+- 优化模型：目前有大致两个方向。一是直接摒弃YOLO系列，该有其他模型或者自己构造新的CNN。（难度较大）二是使用更新的YOLO同时对模型重新训练并进行微调以优化监测效果。（难度较小，但是没什么创新）
+- 增加低头检测识别判断。
+- 完成图形化分析模块的编写

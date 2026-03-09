@@ -1,5 +1,5 @@
 import sys
-from PyQt5.QtCore import Qt  # 新增导入 Qt，用于设置高分屏
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QIcon, QFont
 from qfluentwidgets import (
@@ -55,17 +55,17 @@ class MainWindow(FluentWindow):
             position=NavigationItemPosition.TOP
         )
 
-    # ================= 新增：安全退出拦截 =================
+# ================= 新增：安全退出拦截 =================
     def closeEvent(self, event):
         """
         重写窗口关闭事件。
         确保在用户点击右上角关闭程序时，后台摄像头线程被安全释放。
         """
-        # 检查监控界面是否实例化了线程，并且线程还在运行中
-        if hasattr(self.monitorInterface, 'thread') and self.monitorInterface.thread.isRunning():
+        # 注意这里也全改成了 camera_thread
+        if hasattr(self.monitorInterface, 'camera_thread') and self.monitorInterface.camera_thread.isRunning():
             print("正在安全释放摄像头资源...")
-            self.monitorInterface.thread.stop()
-            self.monitorInterface.thread.wait()  # 等待线程彻底结束
+            self.monitorInterface.camera_thread.stop()
+            self.monitorInterface.camera_thread.wait()  # 等待线程彻底结束
 
         # 接受关闭事件，正常退出程序
         event.accept()

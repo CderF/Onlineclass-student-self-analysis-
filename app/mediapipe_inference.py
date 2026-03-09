@@ -1,14 +1,14 @@
 import cv2
 import math
+import numpy as np
 import mediapipe as mp
 
 
 class FaceMeshInference:
-    """使用 MediaPipe 提取面部 478 个关键点，并计算 EAR 和 MAR，支持绘制面部网格"""
+    """使用 MediaPipe 提取面部特征，计算 EAR、MAR，并解算头部 3D 姿态 (Pitch, Yaw, Roll)"""
 
     def __init__(self):
         self.mp_face_mesh = mp.solutions.face_mesh
-        # 新增：引入 MediaPipe 的画笔工具和默认样式
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles
 
@@ -23,6 +23,18 @@ class FaceMeshInference:
         self.LEFT_EYE = [33, 160, 158, 133, 153, 144]
         self.RIGHT_EYE = [362, 385, 387, 263, 373, 380]
         self.MOUTH_INNER = [78, 308, 13, 14]
+
+        # ====== 新增：预定义的 3D 面部通用模型关键点 (XYZ 坐标) ======
+        # 选择 6 个最具代表性的锚点：鼻尖、下巴、左右眼角、左右嘴角
+        self.model_points = np.array([
+            (0.0, 0.0, 0.0),  # 1: 鼻尖 (原点)
+            (0.0, -330.0, -65.0),  # 152: 下巴
+            (-225.0, 170.0, -135.0),  # 33: 左眼左眼角
+            (225.0, 170.0, -135.0),  # 263: 右眼右眼角
+            (-150.0, -150.0, -125.0),  # 61: 左嘴角
+            (150.0, -150.0, -125.0)  # 291: 右嘴角
+        ], dtype=np.float64)
+        # =========================================================
 
     def _euclidean_distance(self, p1, p2):
         return math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
@@ -42,23 +54,66 @@ class FaceMeshInference:
         if h == 0: return 0
         return v / h
 
+    # ====== 新增：PnP 头部姿态解算核心方法 ======
+    def estimate_head_pose(self, landmarks, img_w, img_h):
+        """利用 OpenCV 的 PnP 算法计算头部的 Pitch (俯仰), Yaw (偏航), Roll (翻滚) 角度"""
+
+        # 1. 提取对应的 2D 像素坐标
+        image_points = np.array([
+            (landmarks.landmark[1].x * img_w, landmarks.landmark[1].y * img_h),  # 鼻尖
+            (landmarks.landmark[152].x * img_w, landmarks.landmark[152].y * img_h),  # 下巴
+            (landmarks.landmark[33].x * img_w, landmarks.landmark[33].y * img_h),  # 左眼角
+            (landmarks.landmark[263].x * img_w, landmarks.landmark[263].y * img_h),  # 右眼角
+            (landmarks.landmark[61].x * img_w, landmarks.landmark[61].y * img_h),  # 左嘴角
+            (landmarks.landmark[291].x * img_w, landmarks.landmark[291].y * img_h)  # 右嘴角
+        ], dtype=np.float64)
+
+        # 2. 伪造摄像机内参矩阵 (假设焦距等于图像宽度，光心在图像中心)
+        focal_length = img_w
+        center = (img_w / 2, img_h / 2)
+        camera_matrix = np.array(
+            [[focal_length, 0, center[0]],
+             [0, focal_length, center[1]],
+             [0, 0, 1]], dtype=np.float64
+        )
+        dist_coeffs = np.zeros((4, 1))  # 假设没有镜头畸变
+
+        # 3. 解算 PnP (Perspective-n-Point)
+        success, rotation_vector, translation_vector = cv2.solvePnP(
+            self.model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE
+        )
+
+        if not success:
+            return 0, 0, 0
+
+        # 4. 将旋转向量转换为旋转矩阵
+        rotation_matrix, _ = cv2.Rodrigues(rotation_vector)
+
+        # 5. 从旋转矩阵中提取欧拉角 (Euler Angles)
+        pose_mat = cv2.hconcat((rotation_matrix, translation_vector))
+        _, _, _, _, _, _, euler_angles = cv2.decomposeProjectionMatrix(pose_mat)
+
+        # OpenCV 返回的 euler_angles 是一个二维数组
+        pitch = euler_angles[0][0]
+        yaw = euler_angles[1][0]
+        roll = euler_angles[2][0]
+
+        return pitch, yaw, roll
+
+    # ============================================
+
     def process_frame(self, frame, draw_mesh=True):
-        """
-        处理帧，返回 (ear, mar, annotated_frame)
-        :param draw_mesh: 是否在图像上绘制绿色的面部网格
-        """
         img_h, img_w, _ = frame.shape
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.face_mesh.process(rgb_frame)
 
         ear, mar = None, None
+        pitch, yaw, roll = None, None, None  # <--- 新增：初始化角度变量
 
         if results.multi_face_landmarks:
             landmarks = results.multi_face_landmarks[0]
 
-            # --- 新增：绘制面部网格 ---
             if draw_mesh:
-                # 绘制网格底纹
                 self.mp_drawing.draw_landmarks(
                     image=frame,
                     landmark_list=landmarks,
@@ -66,7 +121,6 @@ class FaceMeshInference:
                     landmark_drawing_spec=None,
                     connection_drawing_spec=self.mp_drawing_styles.get_default_face_mesh_tesselation_style()
                 )
-                # 绘制眼眶、嘴唇等轮廓线
                 self.mp_drawing.draw_landmarks(
                     image=frame,
                     landmark_list=landmarks,
@@ -74,12 +128,14 @@ class FaceMeshInference:
                     landmark_drawing_spec=None,
                     connection_drawing_spec=self.mp_drawing_styles.get_default_face_mesh_contours_style()
                 )
-            # --------------------------
 
             left_ear = self._calculate_ear(self.LEFT_EYE, landmarks, img_w, img_h)
             right_ear = self._calculate_ear(self.RIGHT_EYE, landmarks, img_w, img_h)
             ear = (left_ear + right_ear) / 2.0
-
             mar = self._calculate_mar(self.MOUTH_INNER, landmarks, img_w, img_h)
 
-        return ear, mar, frame
+            # 调用头部姿态解算
+            pitch, yaw, roll = self.estimate_head_pose(landmarks, img_w, img_h)
+
+        # <--- 修改这里：将 pitch, yaw, roll 一起返回 --->
+        return ear, mar, pitch, yaw, roll, frame

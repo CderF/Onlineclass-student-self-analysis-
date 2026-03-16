@@ -108,7 +108,8 @@ class FaceMeshInference:
         results = self.face_mesh.process(rgb_frame)
 
         ear, mar = None, None
-        pitch, yaw, roll = None, None, None  # <--- 新增：初始化角度变量
+        pitch, yaw, roll = None, None, None
+        bbox = None  # <--- 新增：用于存放人脸边界框 (x_min, y_min, x_max, y_max)
 
         if results.multi_face_landmarks:
             landmarks = results.multi_face_landmarks[0]
@@ -134,8 +135,28 @@ class FaceMeshInference:
             ear = (left_ear + right_ear) / 2.0
             mar = self._calculate_mar(self.MOUTH_INNER, landmarks, img_w, img_h)
 
-            # 调用头部姿态解算
             pitch, yaw, roll = self.estimate_head_pose(landmarks, img_w, img_h)
 
-        # <--- 修改这里：将 pitch, yaw, roll 一起返回 --->
-        return ear, mar, pitch, yaw, roll, frame
+            # ====== 新增：计算人脸边界框 (Bounding Box) ======
+            # 提取所有关键点的 x, y 坐标
+            x_coords = [lm.x for lm in landmarks.landmark]
+            y_coords = [lm.y for lm in landmarks.landmark]
+
+            # 计算最小外接矩形
+            x_min, x_max = int(min(x_coords) * img_w), int(max(x_coords) * img_w)
+            y_min, y_max = int(min(y_coords) * img_h), int(max(y_coords) * img_h)
+
+            # 增加 20% 的外扩 Padding，确保包含完整的面部特征
+            pad_w = int((x_max - x_min) * 0.2)
+            pad_h = int((y_max - y_min) * 0.2)
+
+            x_min = max(0, x_min - pad_w)
+            y_min = max(0, y_min - pad_h)
+            x_max = min(img_w, x_max + pad_w)
+            y_max = min(img_h, y_max + pad_h)
+
+            bbox = (x_min, y_min, x_max, y_max)
+            # ============================================
+
+        # <--- 修改这里：多返回一个 bbox --->
+        return ear, mar, pitch, yaw, roll, bbox, frame

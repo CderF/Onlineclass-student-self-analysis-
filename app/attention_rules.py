@@ -8,7 +8,7 @@ class AttentionAnalyzer:
         self.MAR_THRESH = 0.65
         self.PERCLOS_FATIGUE_THRESH = 0.38
 
-        # ====== 新增：空间姿态判定阈值 ======
+        # ====== 空间姿态判定阈值 ======
         # 注意：你需要根据实际测试确定低头时 D_Pitch 是正数还是负数。
         # 在标准的 OpenCV 坐标系分解中，低头通常会导致 Pitch 变为负数。
         # 如果你测试时发现低头 D_Pitch 变成了 +20，请把这里改成正数。
@@ -72,7 +72,7 @@ class AttentionAnalyzer:
                 self.roll_eye = 0
                 self.roll_mouth = 0
 
-        # --- 3. 新增：基于相对空间角度的“低头/走神”检测 ---
+        # --- 3. 基于相对空间角度的“低头/走神”检测 ---
         if has_face and delta_pitch is not None:
             # 判断是否低头 (注意符号！)
             if delta_pitch < self.PITCH_DOWN_THRESH:

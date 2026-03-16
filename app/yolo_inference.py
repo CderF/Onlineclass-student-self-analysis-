@@ -1,51 +1,55 @@
 import cv2
-import torch
-import pathlib
+import numpy as np
+from ultralytics import YOLO
 import platform
+import pathlib
 
-# 跨平台补丁
-# 如果当前系统不是 Windows (比如你的 Mac)，则强制将 WindowsPath 重定向为 PosixPath
+# 跨平台补丁 (保留，以防万一)
 if platform.system() != 'Windows':
     pathlib.WindowsPath = pathlib.PosixPath
 # ===================================================
 
-class YOLOInference:
-    """专为 YOLOv5 定制的推理类，已解决跨平台加载问题"""
+class ExpressionClassifier:
+    """专为最新 YOLO26-cls 定制的人脸表情分类推理类"""
 
-    def __init__(self, weights_path='weights/best.pt', conf_thres=0.4):
-        self.conf_thres = conf_thres
-        # 智能选择设备：如果有 Mac M 系列芯片则用 mps 加速
-        self.device = torch.device(
-            'cuda' if torch.cuda.is_available() else ('mps' if torch.backends.mps.is_available() else 'cpu'))
-
+    def __init__(self, weights_path='weights/yolo26n-cls.pt'):
+        """
+        初始化模型。
+        :param weights_path: 默认使用官方刚发布的 YOLO26 nano 分类模型进行占位测试。
+                             将来训练好 RAF-DB 后，替换为我们自己的 'weights/best_fer.pt'
+        """
         try:
-            print(f"正在通过 torch.hub 加载 YOLOv5 模型 (设备: {self.device})...")
-            self.model = torch.hub.load('ultralytics/yolov5', 'custom', path=weights_path, force_reload=False)
-            self.model.to(self.device)
-            self.model.conf = self.conf_thres
-
-            self.classes = self.model.names if hasattr(self.model, 'names') else []
-            print("✅ YOLOv5 模型加载成功！类别包含:", self.classes)
+            print(f"正在加载最新的 YOLO26-cls 分类模型: {weights_path}...")
+            # Ultralytics 会自动处理设备分配，并且本地没有 yolo26n-cls.pt 时会自动下载
+            self.model = YOLO(weights_path)
+            self.classes = self.model.names
+            print(f"✅ YOLO26-cls 模型加载成功！共包含 {len(self.classes)} 个类别。")
         except Exception as e:
-            print(f"❌ YOLOv5 模型加载失败: {e}")
+            print(f"❌ YOLO26-cls 模型加载失败: {e}")
             self.model = None
 
-    def process_frame(self, frame):
-        """处理单帧图像"""
-        if self.model is None:
-            return frame, []
+    def process_face(self, face_img):
+        """
+        处理传入的人脸切片图像，输出分类结果
+        :param face_img: OpenCV 格式的人脸 ROI 图像 (BGR)
+        :return: (最高概率类别名称, 置信度, 所有类别的概率数组)
+        """
+        # 安全防御：防止传入空图导致程序崩溃
+        if self.model is None or face_img is None or face_img.size == 0:
+            return "Unknown", 0.0, None
 
-        img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.model(img)
+        # 推理 (设置 verbose=False 避免每帧都在控制台打印日志)
+        results = self.model(face_img, verbose=False)
 
-        detected_classes = []
+        # 提取分类结果概率
+        probs = results[0].probs
 
-        df = results.pandas().xyxy[0]
-        if not df.empty:
-            detected_classes = df['name'].tolist()
+        # 1. 获取最高概率的索引、名称和置信度
+        top1_idx = probs.top1
+        top1_class = self.classes[top1_idx]
+        top1_conf = probs.top1conf.item()
 
-        results.render()
-        annotated_frame = results.ims[0]
-        annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR)
+        # 2. 提取所有类别的概率分布 (为我们之后设计“1分钟时序平滑矩阵”做准备)
+        all_probs = probs.data.cpu().numpy()
 
-        return annotated_frame, detected_classes
+        return top1_class, top1_conf, all_probs

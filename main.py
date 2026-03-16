@@ -7,7 +7,6 @@ from qfluentwidgets import (
     Theme, setTheme
 )
 from qfluentwidgets import FluentIcon as FIF
-
 # Import our custom interfaces
 from app.view.monitor_interface import MonitorInterface
 from app.view.report_interface import ReportInterface

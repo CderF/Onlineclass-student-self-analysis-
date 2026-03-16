@@ -1,4 +1,4 @@
 {
-    "python-envs.defaultEnvManager": "ms-python.python:conda",
-    "python-envs.defaultPackageManager": "ms-python.python:conda"
+    "python.defaultInterpreterPath": "/Users/fang/Documents/Code/miniconda3/envs/demo/bin/python",
+    "python.terminal.activateEnvironment": true
 }

@@ -12,14 +12,14 @@ if platform.system() != 'Windows':
 class ExpressionClassifier:
     """专为最新 YOLO26-cls 定制的人脸表情分类推理类"""
 
-    def __init__(self, weights_path='weights/yolo26n-cls.pt'):
+    def __init__(self, weights_path='weights/best.pt'):
         """
         初始化模型。
         :param weights_path: 默认使用官方刚发布的 YOLO26 nano 分类模型进行占位测试。
                              将来训练好 RAF-DB 后，替换为我们自己的 'weights/best_fer.pt'
         """
         try:
-            print(f"正在加载最新的 YOLO26-cls 分类模型: {weights_path}...")
+            print(f"正在加载分类模型: {weights_path}...")
             # Ultralytics 会自动处理设备分配，并且本地没有 yolo26n-cls.pt 时会自动下载
             self.model = YOLO(weights_path)
             self.classes = self.model.names
@@ -49,7 +49,7 @@ class ExpressionClassifier:
         top1_class = self.classes[top1_idx]
         top1_conf = probs.top1conf.item()
 
-        # 2. 提取所有类别的概率分布 (为我们之后设计“1分钟时序平滑矩阵”做准备)
+        # 2. 提取所有类别的概率分布 (为1分钟时序平滑矩阵做准备)
         all_probs = probs.data.cpu().numpy()
 
         return top1_class, top1_conf, all_probs

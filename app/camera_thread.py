@@ -63,7 +63,7 @@ class CameraThread(QThread):
                     # 基于人脸框进行裁剪，送入 YOLO26-cls
 
                     current_expression = "None"
-                    detected_classes = []
+                    all_probs = None
 
                     if bbox is not None:
                         x_min, y_min, x_max, y_max = bbox
@@ -125,7 +125,7 @@ class CameraThread(QThread):
 
                         # 调用注意力规则引擎
                         score, status_text, alert_data = self.analyzer.process_frame(
-                            detected_classes, ear, mar, delta_pitch, delta_yaw
+                            all_probs, ear, mar, delta_pitch, delta_yaw
                         )
                         self.update_status_signal.emit(status_text)
 

@@ -54,7 +54,7 @@ class FaceMeshInference:
         if h == 0: return 0
         return v / h
 
-    # ====== 新增：PnP 头部姿态解算核心方法 ======
+    # ====== PnP 头部姿态解算核心方法 ======
     def estimate_head_pose(self, landmarks, img_w, img_h):
         """利用 OpenCV 的 PnP 算法计算头部的 Pitch (俯仰), Yaw (偏航), Roll (翻滚) 角度"""
 

@@ -13,13 +13,14 @@ class AttentionAnalyzer:
         self.face_not_detected_count = 0
         self.head_down_count = 0
         self.last_alert_time = 0
+        self.eyes_closed_start_time = None  # 用于记录连续闭眼的起始时间
 
         # ==============================================================
-        # 2. 彻底基于“物理时间戳”的滑动窗口
+        # 2. 多模态融合时间戳滑动窗口 (全线对齐 8 秒)
         # ==============================================================
-        # 不再依赖 FPS，队列里存放的是元组: (timestamp, data)
-        self.micro_buffer = deque()  # 存放 3 秒内的微观概率: (now, all_probs)
-        self.macro_buffer = deque()  # 存放 60 秒内的宏观标签: (now, state_label)
+        self.micro_buffer = deque()  # 8 秒微观表情概率: (now, all_probs_clean)
+        self.perclos_buffer = deque()  # 8 秒疲劳特征缓冲: (now, is_blink, is_yawn)
+        self.macro_buffer = deque()  # 60 秒宏观离散标签: (now, state_label)
 
         # YOLO 类别索引映射
         self.EMOTION_IDX = {
@@ -35,22 +36,46 @@ class AttentionAnalyzer:
         status_text = "Status: Initializing..."
         score = 100
         now = time.time()
-        has_face = (ear is not None)
+        has_face = (ear is not None and mar is not None)
 
         current_cognitive_state = "Neutral"  # 默认状态
 
         # ==============================================================
-        # 微观平滑层 (物理时间 9 秒滑动窗口)
-        #   计算过去9秒内的根据Yolo输出的 7 个表情标签抽象融合而成的 4 个专注度标签
-        #   每秒出一个过去9秒内的平均值
+        # 阶段一 & 中观层：物理防污染拦截 + 微观概率融合 + 疲劳升格
         # ==============================================================
         if has_face and all_probs is not None and len(all_probs) == 7:
-            # 1. 存入带时间戳的数据包裹
-            self.micro_buffer.append((now, all_probs))
 
-            # 2. 核心：剔除超过 4.0 秒的老数据
-            while self.micro_buffer and (now - self.micro_buffer[0][0]) > 4.0:
+            # --- 策略一：前向特征拦截 (物理防污染) ---
+            is_yawn = (mar > 0.65)
+            is_blink_frame = (ear < 0.15)
+            #连续闭眼 2 秒计时器
+            if is_blink_frame:
+                if self.eyes_closed_start_time is None:
+                    self.eyes_closed_start_time = now  # 刚闭上的瞬间，记录时间
+                closed_duration = now - self.eyes_closed_start_time
+            else:
+                self.eyes_closed_start_time = None  # 一旦睁眼，计时器立刻清零
+                closed_duration = 0.0
+            #只有闭眼2秒以上才会被认为在闭眼
+            is_blink = (closed_duration > 2.0)
+
+            probs_clean = np.copy(all_probs)
+
+            # 如果正在打哈欠或闭眼，强行剥夺 Happy 和 Surprise 的概率，防止 YOLO 误判
+            if is_yawn or is_blink:
+                probs_clean = np.zeros(7) # 7个概率全变 0
+                probs_clean[self.EMOTION_IDX['Neutral']] = 1.0  # 唯独 Neutral 设为 1.0
+
+
+            # 1. 存入带时间戳的数据包裹
+            self.micro_buffer.append((now, probs_clean))
+            self.perclos_buffer.append((now, is_blink_frame, is_yawn))
+
+            # 2. 核心：双队列统一剔除超过 8.0 秒的老数据
+            while self.micro_buffer and (now - self.micro_buffer[0][0]) > 8.0:
                 self.micro_buffer.popleft()
+            while self.perclos_buffer and (now - self.perclos_buffer[0][0]) > 8.0:
+                self.perclos_buffer.popleft()
 
             # 3. 提取纯概率数组进行平均计算
             probs_only = [item[1] for item in self.micro_buffer]
@@ -80,20 +105,30 @@ class AttentionAnalyzer:
             else:
                 p_u, p_d, p_dis, p_n = 0, 0, 0, 1.0
 
-            # 6. 取最大值作为当前微观窗口的唯一离散状态
+            # 6. 取最大值作为当前微观窗口的基础离散状态
             states = ["Understand", "Doubt", "Disgusted", "Neutral"]
             fused_probs = [p_u, p_d, p_dis, p_n]
             max_idx = np.argmax(fused_probs)
             current_cognitive_state = states[max_idx]
 
-            # 7. 将这个稳定下来的状态存入 1 分钟的宏观窗口
+            # --- 策略二：计算 8 秒 Perclos 疲劳度，并行使一票否决权 ---
+            if len(self.perclos_buffer) > 0 and (now - self.perclos_buffer[0][0]) >= 7.5:   #冷启动保护，先累计满7.5秒再计算
+                total_p_frames = len(self.perclos_buffer)
+                blink_count = sum(1 for item in self.perclos_buffer if item[1])
+                yawn_count = sum(1 for item in self.perclos_buffer if item[2])
+
+                # Perclos 公式: 闭眼率 + 哈欠率 * 0.2
+                perclos_val = (blink_count / total_p_frames) + (yawn_count / total_p_frames) * 0.2
+
+                # 如果超过疲劳阈值，直接将第五状态覆写上去！
+                if perclos_val > 0.38:
+                    current_cognitive_state = "Fatigued"
+
+            # 7. 将这个最终决断的状态存入 1 分钟的宏观窗口
             self.macro_buffer.append((now, current_cognitive_state))
 
         # ==============================================================
         # 宏观统计层 (物理时间 60 秒滑动窗口计算 Score)
-        #   队列中存放过去60秒内上一阶段输出的标签，每过一帧计算一次Score
-        #   每一帧检测出来一个标签
-        #   每次计算Score都是将队列内中各个标签套入公式进行计算的
         # ==============================================================
         # 1. 核心：剔除超过 60.0 秒的老数据
         while self.macro_buffer and (now - self.macro_buffer[0][0]) > 60.0:
@@ -104,14 +139,17 @@ class AttentionAnalyzer:
             macro_list = [item[1] for item in self.macro_buffer]
             total_frames = len(macro_list)
 
-            u_count = macro_list.count("Understand")
-            d_count = macro_list.count("Doubt")
-            dis_count = macro_list.count("Disgusted")
-            n_count = macro_list.count("Neutral")
+            u_count = macro_list.count("Understand")    #理解状态
+            d_count = macro_list.count("Doubt") #疑惑状态
+            dis_count = macro_list.count("Disgusted")   #厌烦状态
+            n_count = macro_list.count("Neutral")   #自然听课状态
+            f_count = macro_list.count("Fatigued")  # 疲劳状态
 
-            # 3. 动态 Score 公式 (最高不超过 100)
-            raw_score = (1.0 * u_count + 0.9 * n_count + 0.7 * d_count + 0.1 * dis_count) / total_frames * 100
-            score = min(100, int(raw_score))
+            # 3. 动态 Score 公式 (引入 Fatigued 的 -0.5 重磅惩罚)
+            raw_score = (1.0 * u_count + 0.9 * n_count + 0.7 * d_count + 0.1 * dis_count - 0.5 * f_count) / total_frames * 100
+
+            # 因为存在负权重，确保分数不会掉到 0 以下，最高不超过 100
+            score = max(0, min(100, int(raw_score)))
 
             status_text = f"Cognitive: {current_cognitive_state.upper()}"
 
@@ -119,6 +157,10 @@ class AttentionAnalyzer:
             if (d_count / total_frames) > 0.4:
                 if now - self.last_alert_time > 45:
                     alert_data = ('doubt', 'Learning Alert', '系统检测到您可能遇到知识难点，建议做好标记或暂停回顾。')
+                    self.last_alert_time = now
+            elif (f_count / total_frames) > 0.3:  # 新增疲劳弹窗
+                if now - self.last_alert_time > 60:
+                    alert_data = ('fatigue', 'Fatigue Alert', '系统检测到您当前较为疲劳，建议起身活动或喝口水休息一下。')
                     self.last_alert_time = now
 
         # ==============================================================

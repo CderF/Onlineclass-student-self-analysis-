@@ -100,10 +100,12 @@ class CameraThread(QThread):
                             self.update_status_signal.emit(f"CALIBRATING: 请正视屏幕... {remaining}s")
                             score = 100
                         else:
-                            # 3 秒结束：计算平均值并锁定基准线
+                            # 3 秒结束：计算【中位数】并锁定基准线 (彻底免疫极端离群噪点)
                             if len(pitch_buffer) > 0:
-                                self.baseline_pitch = np.mean(pitch_buffer)
-                                self.baseline_yaw = np.mean(yaw_buffer)
+                                # --- 核心修改：将 mean 替换为 median ---
+                                self.baseline_pitch = np.median(pitch_buffer)
+                                self.baseline_yaw = np.median(yaw_buffer)
+                                # --------------------------------------
                                 print(
                                     f"✅ 校准完成！锁定基准线 -> Pitch: {self.baseline_pitch:.1f}, Yaw: {self.baseline_yaw:.1f}")
                             else:

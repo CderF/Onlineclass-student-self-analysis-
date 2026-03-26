@@ -8,10 +8,13 @@ class AttentionAnalyzer:
         # ==============================================================
         # 1. 空间姿态与物理规则参数
         # ==============================================================
-        self.PITCH_DOWN_THRESH = -15.0
-        self.HEAD_DOWN_MAX_FRAMES = 300
-        self.face_not_detected_count = 0
-        self.head_down_count = 0
+        self.PITCH_DOWN_THRESH = -15.0  #低头判定角
+        self.HEAD_DOWN_MAX_SECONDS = 15.0  # 超过 15 秒触发弹窗
+        self.FACE_NOT_DETECTED_MAX_SECONDS = 120.0 # 超过60秒触发弹窗
+        self.head_down_start_time = None  # 用来记录开始低头的那一瞬间的时间戳
+        self.score_before_head_down = 100
+        self.face_not_detected_time = None #用来记录离开作为的那一瞬间的时间戳
+        self.score_before_absent = 100
         self.last_alert_time = 0
         self.eyes_closed_start_time = None  # 用于记录连续闭眼的起始时间
 
@@ -41,11 +44,11 @@ class AttentionAnalyzer:
         current_cognitive_state = "Neutral"  # 默认状态
 
         # ==============================================================
-        # 阶段一 & 中观层：物理防污染拦截 + 微观概率融合 + 疲劳升格
+        # 表情标签前向拦截 + 微观概率融合 + 疲劳升格
         # ==============================================================
         if has_face and all_probs is not None and len(all_probs) == 7:
 
-            # --- 策略一：前向特征拦截 (物理防污染) ---
+            # --- 前向特征拦截 ---
             is_yawn = (mar > 0.65)
             is_blink_frame = (ear < 0.15)
             #连续闭眼 2 秒计时器
@@ -152,8 +155,9 @@ class AttentionAnalyzer:
             score = max(0, min(100, int(raw_score)))
 
             status_text = f"Cognitive: {current_cognitive_state.upper()}"
-
-            # 4. 基于认知的弹窗
+            #目前权重还没有替换成优化后的版本因此无法根据实际情况进行测试以便发现哪些弹窗有助于提高用户体验
+            """
+            # 4. 基于专注度水平的弹窗
             if (d_count / total_frames) > 0.4:
                 if now - self.last_alert_time > 45:
                     alert_data = ('doubt', 'Learning Alert', '系统检测到您可能遇到知识难点，建议做好标记或暂停回顾。')
@@ -162,36 +166,79 @@ class AttentionAnalyzer:
                 if now - self.last_alert_time > 60:
                     alert_data = ('fatigue', 'Fatigue Alert', '系统检测到您当前较为疲劳，建议起身活动或喝口水休息一下。')
                     self.last_alert_time = now
-
+            """
         # ==============================================================
         # 阶段三：空间物理规则最高优先级覆写 (一票否决)
         # ==============================================================
-        """
-        if has_face and delta_pitch is not None:
-            if delta_pitch < self.PITCH_DOWN_THRESH:
-                self.head_down_count += 1
-                status_text = "Focus: HEAD DOWN"
-                score = 30
 
-                if self.head_down_count > self.HEAD_DOWN_MAX_FRAMES:
-                    if now - self.last_alert_time > 30:
-                        alert_data = ('head_down', 'Alert', '长时间低头！如果是玩手机请专心，记笔记请注意颈椎休息。')
+            # --------------------------------------------------
+            # 1. 低头判定逻辑
+            # --------------------------------------------------
+            if has_face and delta_pitch is not None:
+                if delta_pitch < self.PITCH_DOWN_THRESH:
+                    # 刚刚低头的瞬间：按下秒表，并赶紧给当前分数拍个照存档！
+                    if self.head_down_start_time is None:
+                        self.head_down_start_time = now
+                        self.score_before_head_down = score
+
+                    # 算出此刻已经连续低头了多少秒 (必须写在 if is None 的外面！)
+                    down_duration = now - self.head_down_start_time
+
+                    # 业务逻辑：超过 15 秒
+                    if down_duration > self.HEAD_DOWN_MAX_SECONDS:
+                        # 查阅 15 秒前的历史成绩
+                        if self.score_before_head_down >= 60:
+                            status_text = "Focus: TAKING NOTES"
+                        else:
+                            status_text = "Focus: DISTRACTED"
+                            # 我们用一个时间差的二次方（或乘以系数）作为惩罚！
+                            overtime = down_duration - self.HEAD_DOWN_MAX_SECONDS
+                            penalty = int((overtime ** 2) * 0.2)
+                            score = max(0, score - penalty)  # 强制覆盖宏观分数，且不低于0
+
+                            # 每 30 秒响一次
+                            if now - self.last_alert_time > 30.0:
+                                alert_data = ('head_down', 'Learning Alert', '检测到长时间开小差，如需休息请先暂停。')
+                                self.last_alert_time = now
+                else:
+                    # 一旦抬头，秒表清零
+                    self.head_down_start_time = None
+            else:
+                self.head_down_start_time = None
+
+            # --------------------------------------------------
+            # 2. 离开座位判定逻辑
+            # --------------------------------------------------
+            if not has_face:
+                # 刚消失的瞬间：按下秒表，给当前分数拍照
+                if self.face_not_detected_time is None:
+                    self.face_not_detected_time = now
+                    self.score_before_absent = score
+
+                absent_duration = now - self.face_not_detected_time
+
+                # 业务逻辑：两分钟内非线性平滑降分
+                if absent_duration <= self.FACE_NOT_DETECTED_MAX_SECONDS:
+                    status_text = "Status: AWAY (Short)"
+
+                    # 1. 计算时间流逝的基础比例 (0.0 到 1.0)
+                    base_ratio = absent_duration / self.FACE_NOT_DETECTED_MAX_SECONDS
+
+                    # 2. 套用三次幂曲线，制造“先缓后急”
+                    decay_ratio = base_ratio ** 3
+
+                    # 3. 计算并执行惩罚
+                    current_penalty = self.score_before_absent * decay_ratio
+                    score = max(0, int(self.score_before_absent - current_penalty))
+
+                else:
+                    # 彻底离座超过两分钟，毫不留情
+                    status_text = "Status: ABSENT"
+                    score = 0
+                    if now - self.last_alert_time > 30.0:
+                        alert_data = ('absence', 'Alert', 'Student Absent! Please return to seat.')
                         self.last_alert_time = now
             else:
-                self.head_down_count = 0
-        else:
-            self.head_down_count = 0
-
-        if not has_face:
-            self.face_not_detected_count += 1
-            status_text = "Status: ABSENT"
-            score = 0
-
-            if self.face_not_detected_count == 250:
-                if now - self.last_alert_time > 30:
-                    alert_data = ('absence', 'Alert', 'User Absent! Please return to seat.')
-                    self.last_alert_time = now
-        else:
-            self.face_not_detected_count = 0
-        """
+                # 脸一回来，秒表清零
+                self.face_not_detected_time = None
         return score, status_text, alert_data

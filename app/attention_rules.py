@@ -152,9 +152,8 @@ class AttentionAnalyzer:
             score = max(0, min(100, int(raw_score)))
 
             status_text = f"Cognitive: {current_cognitive_state.upper()}"
-            # 基于专注度水平的弹窗还需完善，目前模型还没训练好所以意义不太也难以测试
-            """
-            # 4. 基于专注度水平的弹窗
+
+            # 4. 基于认知的弹窗
             if (d_count / total_frames) > 0.4:
                 if now - self.last_alert_time > 45:
                     alert_data = ('doubt', 'Learning Alert', '系统检测到您可能遇到知识难点，建议做好标记或暂停回顾。')
@@ -163,11 +162,11 @@ class AttentionAnalyzer:
                 if now - self.last_alert_time > 60:
                     alert_data = ('fatigue', 'Fatigue Alert', '系统检测到您当前较为疲劳，建议起身活动或喝口水休息一下。')
                     self.last_alert_time = now
-            """
+
         # ==============================================================
         # 阶段三：空间物理规则最高优先级覆写 (一票否决)
         # ==============================================================
-
+        """
         if has_face and delta_pitch is not None:
             if delta_pitch < self.PITCH_DOWN_THRESH:
                 self.head_down_count += 1
@@ -194,5 +193,5 @@ class AttentionAnalyzer:
                     self.last_alert_time = now
         else:
             self.face_not_detected_count = 0
-
+        """
         return score, status_text, alert_data

@@ -158,11 +158,11 @@ class AttentionAnalyzer:
             #目前权重还没有替换成优化后的版本因此无法根据实际情况进行测试以便发现哪些弹窗有助于提高用户体验
             """
             # 4. 基于专注度水平的弹窗
-            if (d_count / total_frames) > 0.4:
+            if (d_count / total_frames) > 0.4 | (dis_count / total_frames) > 0.5:
                 if now - self.last_alert_time > 45:
                     alert_data = ('doubt', 'Learning Alert', '系统检测到您可能遇到知识难点，建议做好标记或暂停回顾。')
                     self.last_alert_time = now
-            elif (f_count / total_frames) > 0.3:  # 新增疲劳弹窗
+            elif (f_count / total_frames) > 0.5:  # 新增疲劳弹窗
                 if now - self.last_alert_time > 60:
                     alert_data = ('fatigue', 'Fatigue Alert', '系统检测到您当前较为疲劳，建议起身活动或喝口水休息一下。')
                     self.last_alert_time = now

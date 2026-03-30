@@ -174,7 +174,8 @@ class AttentionAnalyzer:
                     # 算出此刻已经连续低头了多少秒 (必须写在 if is None 的外面！)
                     down_duration = now - self.head_down_start_time
 
-                    # 业务逻辑：超过 15 秒
+                    # 业务逻辑：长时低头前根据之前的专注度分数来判断本次行为的可能性
+                    # 补充：目前为简单逻辑的测试阶段，后续可以尝试加入概率计算公式（长期离席判别同理）
                     if down_duration > self.HEAD_DOWN_MAX_SECONDS:
                         # 查阅 15 秒前的历史成绩
                         if self.score_before_head_down >= 60:

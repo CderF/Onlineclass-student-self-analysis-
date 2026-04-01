@@ -24,7 +24,7 @@ class FaceMeshInference:
         self.RIGHT_EYE = [362, 385, 387, 263, 373, 380]
         self.MOUTH_INNER = [78, 308, 13, 14]
 
-        # ====== 新增：预定义的 3D 面部通用模型关键点 (XYZ 坐标) ======
+        # 预定义的 3D 面部通用模型关键点 (XYZ 坐标)
         # 选择 6 个最具代表性的锚点：鼻尖、下巴、左右眼角、左右嘴角
         self.model_points = np.array([
             (0.0, 0.0, 0.0),  # 1: 鼻尖 (原点)
@@ -34,7 +34,6 @@ class FaceMeshInference:
             (-150.0, -150.0, -125.0),  # 61: 左嘴角
             (150.0, -150.0, -125.0)  # 291: 右嘴角
         ], dtype=np.float64)
-        # =========================================================
 
     def _euclidean_distance(self, p1, p2):
         return math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
@@ -54,11 +53,11 @@ class FaceMeshInference:
         if h == 0: return 0
         return v / h
 
-    # ====== PnP 头部姿态解算核心方法 ======
+    # PnP 头部姿态解算
     def estimate_head_pose(self, landmarks, img_w, img_h):
         """利用 OpenCV 的 PnP 算法计算头部的 Pitch (俯仰), Yaw (偏航), Roll (翻滚) 角度"""
 
-        # 1. 提取对应的 2D 像素坐标
+        # 提取对应的 2D 像素坐标
         image_points = np.array([
             (landmarks.landmark[1].x * img_w, landmarks.landmark[1].y * img_h),  # 鼻尖
             (landmarks.landmark[152].x * img_w, landmarks.landmark[152].y * img_h),  # 下巴
@@ -68,7 +67,7 @@ class FaceMeshInference:
             (landmarks.landmark[291].x * img_w, landmarks.landmark[291].y * img_h)  # 右嘴角
         ], dtype=np.float64)
 
-        # 2. 伪造摄像机内参矩阵 (假设焦距等于图像宽度，光心在图像中心)
+        # 伪造摄像机内参矩阵 (假设焦距等于图像宽度，光心在图像中心)
         focal_length = img_w
         center = (img_w / 2, img_h / 2)
         camera_matrix = np.array(
@@ -78,7 +77,7 @@ class FaceMeshInference:
         )
         dist_coeffs = np.zeros((4, 1))  # 假设没有镜头畸变
 
-        # 3. 解算 PnP (Perspective-n-Point)
+        # 解算 PnP (Perspective-n-Point)
         success, rotation_vector, translation_vector = cv2.solvePnP(
             self.model_points, image_points, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE
         )
@@ -86,10 +85,10 @@ class FaceMeshInference:
         if not success:
             return 0, 0, 0
 
-        # 4. 将旋转向量转换为旋转矩阵
+        # 将旋转向量转换为旋转矩阵
         rotation_matrix, _ = cv2.Rodrigues(rotation_vector)
 
-        # 5. 从旋转矩阵中提取欧拉角 (Euler Angles)
+        # 从旋转矩阵中提取欧拉角 (Euler Angles)
         pose_mat = cv2.hconcat((rotation_matrix, translation_vector))
         _, _, _, _, _, _, euler_angles = cv2.decomposeProjectionMatrix(pose_mat)
 
@@ -98,10 +97,8 @@ class FaceMeshInference:
         yaw = euler_angles[1][0]
         roll = euler_angles[2][0]
 
-        # ==============================================================
-        # 核心防线 1：欧拉角万向节跳变规范化 (Angle Normalization)
+        # 欧拉角万向节跳变规范化 (Angle Normalization)
         # 强制将异常翻转的角度拉回 -90 到 +90 的人类生理极限范围内
-        # ==============================================================
         if pitch > 90:
             pitch -= 180
         elif pitch < -90:
@@ -117,10 +114,7 @@ class FaceMeshInference:
         elif roll < -90:
             roll += 180
 
-        # ==============================================================
-        # 统一物理直觉：确保 "低头" 的 Pitch 是负数
-        # (因为模型坐标系 Y 轴向下的原因，原版 Pitch 低头往往是正数，这里强行翻转)
-        # ==============================================================
+        # 统一物理直觉：确保 "低头" 的 Pitch 是负数 强制翻转
         pitch = -pitch
 
         return pitch, yaw, roll
@@ -134,7 +128,7 @@ class FaceMeshInference:
 
         ear, mar = None, None
         pitch, yaw, roll = None, None, None
-        bbox = None  # <--- 新增：用于存放人脸边界框 (x_min, y_min, x_max, y_max)
+        bbox = None  # 用于存放人脸边界框 (x_min, y_min, x_max, y_max)
 
         if results.multi_face_landmarks:
             landmarks = results.multi_face_landmarks[0]
@@ -162,7 +156,7 @@ class FaceMeshInference:
 
             pitch, yaw, roll = self.estimate_head_pose(landmarks, img_w, img_h)
 
-            # ====== 新增：计算人脸边界框 (Bounding Box) ======
+            # 计算人脸边界框 (Bounding Box)
             # 提取所有关键点的 x, y 坐标
             x_coords = [lm.x for lm in landmarks.landmark]
             y_coords = [lm.y for lm in landmarks.landmark]
@@ -181,7 +175,5 @@ class FaceMeshInference:
             y_max = min(img_h, y_max + pad_h)
 
             bbox = (x_min, y_min, x_max, y_max)
-            # ============================================
 
-        # <--- 修改这里：多返回一个 bbox --->
         return ear, mar, pitch, yaw, roll, bbox, frame

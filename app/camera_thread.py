@@ -39,7 +39,10 @@ class CameraThread(QThread):
 
         print("✅ 摄像头已打开，开始读取画面...")
 
-        # 校准缓冲期所需变量
+        # 校准缓冲期所需变量 校准期为3秒 同时也是Yolo积累原始数据的期间
+        """
+            关于3秒的校准期具体时长还需探讨
+        """
         calibration_duration = 3.0
         calibration_start_time = time.time()
         is_calibrating = True

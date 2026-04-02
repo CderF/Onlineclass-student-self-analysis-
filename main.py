@@ -20,18 +20,18 @@ class MainWindow(FluentWindow):
     def __init__(self):
         super().__init__()
 
-        # 1. Window Configuration
+        # Window Configuration
         self.setWindowTitle("YOLO Attention Monitor")
         self.resize(1100, 750)
 
-        # 2. Create Sub-Interfaces
+        # Create Sub-Interfaces
         self.monitorInterface = MonitorInterface(self)
         self.reportInterface = ReportInterface(self)
 
-        # 3. Initialize Navigation
+        # Initialize Navigation
         self.initNavigation()
 
-        # 4. Optional: Set initial theme
+        # Optional: Set initial theme
         # setTheme(Theme.DARK)
 
     def initNavigation(self):
@@ -54,7 +54,7 @@ class MainWindow(FluentWindow):
             position=NavigationItemPosition.TOP
         )
 
-# ================= 新增：安全退出拦截 =================
+# 安全退出拦截
     def closeEvent(self, event):
         """
         重写窗口关闭事件。
@@ -68,11 +68,10 @@ class MainWindow(FluentWindow):
 
         # 接受关闭事件，正常退出程序
         event.accept()
-    # ======================================================
 
 
 if __name__ == "__main__":
-    # 1. Enable High DPI scaling (强烈建议开启，让 qfluentwidgets 组件更清晰)
+    # Enable High DPI scaling
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
     try:

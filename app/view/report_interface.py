@@ -8,6 +8,7 @@ from qfluentwidgets import (
 class StatCard(CardWidget):
     """
     A reusable helper widget for displaying a single statistic.
+    Now just test
     """
     def __init__(self, icon, title, value, parent=None):
         super().__init__(parent)

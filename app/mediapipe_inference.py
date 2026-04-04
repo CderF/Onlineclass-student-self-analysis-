@@ -114,7 +114,7 @@ class FaceMeshInference:
         elif roll < -90:
             roll += 180
 
-        # 统一物理直觉：确保 "低头" 的 Pitch 是负数 强制翻转
+        # 统一物理直觉：确保 "低头" 的 Pitch 是负数实现强制翻转
         pitch = -pitch
 
         return pitch, yaw, roll

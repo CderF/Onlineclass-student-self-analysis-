@@ -54,7 +54,7 @@ class MainWindow(FluentWindow):
             position=NavigationItemPosition.TOP
         )
 
-# 安全退出拦截
+    # 安全退出拦截
     def closeEvent(self, event):
         """
         重写窗口关闭事件。

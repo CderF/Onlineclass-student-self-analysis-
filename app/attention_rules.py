@@ -30,7 +30,7 @@ class AttentionAnalyzer:
 
     def process_frame(self, all_probs, ear, mar, delta_pitch, delta_yaw):
         """
-        接收 YOLO 分类概率、MediaPipe 特征以及 3D 相对姿态进行综合判断
+        接收 YOLO 分类概率、MediaPipe 特征以及 3D 头部相对姿态进行综合判断
         """
         alert_data = None
         status_text = "Status: Initializing..."
@@ -221,7 +221,7 @@ class AttentionAnalyzer:
                     score = max(0, int(self.score_before_absent - current_penalty))
 
                 else:
-                    # 彻底离座超过两分钟，毫不留情
+                    # 彻底离座超过两分钟，分数清零
                     status_text = "Status: ABSENT"
                     score = 0
                     if now - self.last_alert_time > 30.0:

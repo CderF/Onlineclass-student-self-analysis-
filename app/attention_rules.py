@@ -88,6 +88,14 @@ class AttentionAnalyzer:
             p_surprise = avg_probs[self.EMOTION_IDX['Surprise']]
 
             # 7 进 4 概率融合公式
+            """
+            # 激进风格：敏锐地捕捉每一丝异常情绪，但对yolo的检测结果精确度要求高，同时与后续的归一化操作强绑定
+            raw_understand = 1.0 * p_happy + 0.3 * p_surprise
+            raw_doubt = 1.0 * p_anger + 1.0 * p_sad + 0.7 * p_surprise + 0.1 * p_fear
+            raw_disgusted = 1.0 * p_disgust + 0.4 * p_anger + 0.3 * p_sad
+            raw_neutral = 1.0 * p_neutral
+            """
+            # 平衡风格：每个表情标签的权重均一致，不会抢夺概率。
             raw_understand = 1.0 * p_happy + 0.3 * p_surprise
             raw_doubt = 1.0 * p_anger + 1.0 * p_sad + 0.7 * p_surprise + 0.1 * p_fear
             raw_disgusted = 1.0 * p_disgust + 0.4 * p_anger + 0.3 * p_sad

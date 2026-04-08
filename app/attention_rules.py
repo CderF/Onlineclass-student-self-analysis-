@@ -98,7 +98,7 @@ class AttentionAnalyzer:
             # 平衡风格：每个表情标签的权重均一致，不会抢夺概率。
             raw_understand = 1.0 * p_happy + 0.3 * p_surprise
             raw_doubt = 0.8 * p_anger + 0.5 * p_sad + 0.7 * p_surprise + 0.1 * p_fear
-            raw_disgusted = 1.0 * p_disgust + 0.2 * p_anger + 0.5 * p_sad
+            raw_disgusted = 1.0 * p_disgust + 0.2 * p_anger + 0.5 * p_sad + 0.1 * p_fear
             raw_neutral = 1.0 * p_neutral
 
             # 归一化

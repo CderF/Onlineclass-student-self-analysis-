@@ -12,7 +12,7 @@ from app.camera_thread import CameraThread
 
 class MonitorInterface(QWidget):
     """
-    实时监控界面
+    realtime monitor flame （Yolo）
     负责展示 YOLO 实时检测画面、注意力分数更新以及异步弹窗警告。
     """
 

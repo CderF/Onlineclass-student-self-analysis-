@@ -16,7 +16,7 @@ class AttentionAnalyzer:
         self.last_alert_time = 0
         self.eyes_closed_start_time = None  # 用于记录连续闭眼的起始时间
 
-
+        #阶段一：7进4 表情标签转换为专注度标签 and Perclos升格为第5个专注度标签
         # 多模态融合时间戳滑动窗口（Yolo、Perclos）
         self.micro_buffer = deque()  # 8 秒微观表情概率: (now, all_probs_clean)
         self.perclos_buffer = deque()  # 8 秒疲劳特征缓冲: (now, is_blink, is_yawn)
@@ -30,7 +30,7 @@ class AttentionAnalyzer:
 
     def process_frame(self, all_probs, ear, mar, delta_pitch, delta_yaw):
         """
-        接收 YOLO 分类概率、MediaPipe 特征以及 3D 相对姿态进行综合判断
+        接收 YOLO 分类概率、MediaPipe 特征以及 3D 头部相对姿态进行综合判断
         """
         alert_data = None
         status_text = "Status: Initializing..."
@@ -133,7 +133,7 @@ class AttentionAnalyzer:
             # 将这个最终决断的状态存入 1 分钟的宏观窗口
             self.macro_buffer.append((now, current_cognitive_state))
 
-        # 宏观统计层 (物理时间 60 秒滑动窗口计算 Score)
+        # 阶段二：60秒滑块窗口计算Score
         # 核心：剔除超过 60.0 秒的老数据
         while self.macro_buffer and (now - self.macro_buffer[0][0]) > 60.0:
             self.macro_buffer.popleft()
@@ -158,7 +158,7 @@ class AttentionAnalyzer:
             status_text = f"Cognitive: {current_cognitive_state.upper()}"
             # 目前权重还没有替换成优化后的版本因此无法根据实际情况进行测试以便发现哪些弹窗有助于提高用户体验
             """
-            # 4. 基于专注度水平的弹窗
+            # 基于专注度水平的弹窗
             if (d_count / total_frames) > 0.4 | (dis_count / total_frames) > 0.5:
                 if now - self.last_alert_time > 45:
                     alert_data = ('doubt', 'Learning Alert', '系统检测到您可能遇到知识难点，建议做好标记或暂停回顾。')
@@ -229,7 +229,7 @@ class AttentionAnalyzer:
                     score = max(0, int(self.score_before_absent - current_penalty))
 
                 else:
-                    # 彻底离座超过两分钟，毫不留情
+                    # 彻底离座超过两分钟，分数清零
                     status_text = "Status: ABSENT"
                     score = 0
                     if now - self.last_alert_time > 30.0:

@@ -18,7 +18,7 @@ class AttentionAnalyzer:
 
         #阶段一：7进4 表情标签转换为专注度标签 and Perclos升格为第5个专注度标签
         # 多模态融合时间戳滑动窗口（Yolo、Perclos）
-        self.micro_buffer = deque()  # 8 秒微观表情概率: (now, all_probs_clean)
+        self.micro_buffer = deque()  # 3 秒微观表情概率: (now, all_probs_clean)
         self.perclos_buffer = deque()  # 8 秒疲劳特征缓冲: (now, is_blink, is_yawn)
         self.macro_buffer = deque()  # 60 秒宏观离散标签: (now, state_label)
 
@@ -70,7 +70,7 @@ class AttentionAnalyzer:
             self.perclos_buffer.append((now, is_blink_frame, is_yawn))
 
             # 核心：双队列统一剔除超过 8.0 秒的老数据
-            while self.micro_buffer and (now - self.micro_buffer[0][0]) > 8.0:
+            while self.micro_buffer and (now - self.micro_buffer[0][0]) > 3.0:
                 self.micro_buffer.popleft()
             while self.perclos_buffer and (now - self.perclos_buffer[0][0]) > 8.0:
                 self.perclos_buffer.popleft()

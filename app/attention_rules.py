@@ -6,9 +6,10 @@ from collections import deque
 class AttentionAnalyzer:
     def __init__(self):
         # 定义变量：空间姿态与物理规则参数
+        self.pitch_before_absent = 0
         self.PITCH_DOWN_THRESH = -15.0  #低头判定角
         self.HEAD_DOWN_MAX_SECONDS = 15.0  # 超过 15 秒触发弹窗
-        self.FACE_NOT_DETECTED_MAX_SECONDS = 120.0 # 超过60秒触发弹窗
+        self.FACE_NOT_DETECTED_MAX_SECONDS = 120.0 # 超过120秒触发弹窗
         self.head_down_start_time = None  # 用来记录开始低头的那一瞬间的时间戳
         self.score_before_head_down = 100
         self.face_not_detected_time = None #用来记录离开作为的那一瞬间的时间戳
@@ -179,7 +180,7 @@ class AttentionAnalyzer:
                         self.head_down_start_time = now
                         self.score_before_head_down = score
 
-                    # 算出此刻已经连续低头了多少秒 (必须写在 if is None 的外面！)
+                    # 算出此刻已经连续低头了多少秒
                     down_duration = now - self.head_down_start_time
 
                     # 业务逻辑：长时低头前根据之前的专注度分数来判断本次行为的可能性
@@ -205,17 +206,43 @@ class AttentionAnalyzer:
             else:
                 self.head_down_start_time = None
 
-            # 离开座位判定逻辑
+            # 离开座位与极度低头盲区判定逻辑
             if not has_face:
-                # 刚消失的瞬间：按下秒表，给当前分数拍照
+
+                # 刚消失的瞬间：按下秒表，给当前分数 低头状态拍照
                 if self.face_not_detected_time is None:
                     self.face_not_detected_time = now
                     self.score_before_absent = score
+                    self.pitch_before_absent = delta_pitch
 
                 absent_duration = now - self.face_not_detected_time
 
+                #在丢失面部时，前回顾之前有没有处于低头状态，如果有那么给5秒的惯性冗余
+                if delta_pitch < self.PITCH_DOWN_THRESH:
+                    if absent_duration <= 5.0:
+                        status_text = "Focus: TAKING NOTES (Head Down)"
+                        score = self.score_before_absent
+                    # 数据插补 虽然看不到表情，但强行给宏观大脑塞入 Neutral 标签
+                        self.macro_buffer.append((now, "Neutral"))
+                    else:
+                        # 超过5秒之后 判断之前的分数 执行长时低头的判断逻辑
+                        if score >= 60:
+                            status_text = "Focus: TAKING NOTES (Head Down)"
+                            self.macro_buffer.append((now, "Neutral"))
+                        else:
+                            status_text = "Status: ABNORMAL (Hidden)"
+                            # 我们用一个时间差的二次方（或乘以系数）作为惩罚！
+                            overtime = down_duration - self.HEAD_DOWN_MAX_SECONDS
+                            penalty = int((overtime ** 2) * 0.2)
+                            score = max(0, score - penalty)  # 强制覆盖宏观分数，且不低于0
+
+                            # 每 30 秒响一次
+                            if now - self.last_alert_time > 30.0:
+                                alert_data = ('hidden', 'Alert', '检测到长时间面部丢失，请调整姿态或返回座位！')
+                                self.last_alert_time = now
+
                 # 业务逻辑：两分钟内非线性平滑降分
-                if absent_duration <= self.FACE_NOT_DETECTED_MAX_SECONDS:
+                else:
                     status_text = "Status: AWAY (Short)"
 
                     # 1. 计算时间流逝的基础比例 (0.0 到 1.0)
@@ -228,10 +255,10 @@ class AttentionAnalyzer:
                     current_penalty = self.score_before_absent * decay_ratio
                     score = max(0, int(self.score_before_absent - current_penalty))
 
-                else:
-                    # 彻底离座超过两分钟，分数清零
+                if absent_duration > self.FACE_NOT_DETECTED_MAX_SECONDS:
                     status_text = "Status: ABSENT"
                     score = 0
+
                     if now - self.last_alert_time > 30.0:
                         alert_data = ('absence', 'Alert', 'Student Absent! Please return to seat.')
                         self.last_alert_time = now

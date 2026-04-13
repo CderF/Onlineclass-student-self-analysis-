@@ -6,7 +6,7 @@ from collections import deque
 class AttentionAnalyzer:
     def __init__(self):
         # 定义变量：空间姿态与物理规则参数
-        self.pitch_before_absent = 0
+        self.last_known_pitch = 0
         self.PITCH_DOWN_THRESH = -15.0  #低头判定角
         self.HEAD_DOWN_MAX_SECONDS = 15.0  # 超过 15 秒触发弹窗
         self.FACE_NOT_DETECTED_MAX_SECONDS = 120.0 # 超过120秒触发弹窗
@@ -175,6 +175,7 @@ class AttentionAnalyzer:
             # 低头判定逻辑
             if has_face and delta_pitch is not None:
                 if delta_pitch < self.PITCH_DOWN_THRESH:
+                    self.last_known_pitch = delta_pitch
                     # 刚刚低头的瞬间：按下秒表，并赶紧给当前分数拍个照存档！
                     if self.head_down_start_time is None:
                         self.head_down_start_time = now
@@ -213,12 +214,11 @@ class AttentionAnalyzer:
                 if self.face_not_detected_time is None:
                     self.face_not_detected_time = now
                     self.score_before_absent = score
-                    self.pitch_before_absent = delta_pitch
 
                 absent_duration = now - self.face_not_detected_time
 
                 #在丢失面部时，前回顾之前有没有处于低头状态，如果有那么给5秒的惯性冗余
-                if delta_pitch < self.PITCH_DOWN_THRESH:
+                if self.last_known_pitch < self.PITCH_DOWN_THRESH:
                     if absent_duration <= 5.0:
                         status_text = "Focus: TAKING NOTES (Head Down)"
                         score = self.score_before_absent
@@ -232,7 +232,7 @@ class AttentionAnalyzer:
                         else:
                             status_text = "Status: ABNORMAL (Hidden)"
                             # 我们用一个时间差的二次方（或乘以系数）作为惩罚！
-                            overtime = down_duration - self.HEAD_DOWN_MAX_SECONDS
+                            overtime = absent_duration - 5.0
                             penalty = int((overtime ** 2) * 0.2)
                             score = max(0, score - penalty)  # 强制覆盖宏观分数，且不低于0
 
@@ -243,25 +243,21 @@ class AttentionAnalyzer:
 
                 # 业务逻辑：两分钟内非线性平滑降分
                 else:
-                    status_text = "Status: AWAY (Short)"
-
-                    # 1. 计算时间流逝的基础比例 (0.0 到 1.0)
-                    base_ratio = absent_duration / self.FACE_NOT_DETECTED_MAX_SECONDS
-
-                    # 2. 套用三次幂曲线，制造“先缓后急”
-                    decay_ratio = base_ratio ** 3
-
-                    # 3. 计算并执行惩罚
-                    current_penalty = self.score_before_absent * decay_ratio
-                    score = max(0, int(self.score_before_absent - current_penalty))
-
-                if absent_duration > self.FACE_NOT_DETECTED_MAX_SECONDS:
-                    status_text = "Status: ABSENT"
-                    score = 0
-
-                    if now - self.last_alert_time > 30.0:
-                        alert_data = ('absence', 'Alert', 'Student Absent! Please return to seat.')
-                        self.last_alert_time = now
+                    if absent_duration <= self.FACE_NOT_DETECTED_MAX_SECONDS:
+                        status_text = "Status: AWAY (Short)"
+                        # 1. 计算时间流逝的基础比例 (0.0 到 1.0)
+                        base_ratio = absent_duration / self.FACE_NOT_DETECTED_MAX_SECONDS
+                        # 2. 套用三次幂曲线，制造“先缓后急”
+                        decay_ratio = base_ratio ** 3
+                        # 3. 计算并执行惩罚
+                        current_penalty = self.score_before_absent * decay_ratio
+                        score = max(0, int(self.score_before_absent - current_penalty))
+                    else:
+                        status_text = "Status: ABSENT"
+                        score = 0
+                        if now - self.last_alert_time > 30.0:
+                            alert_data = ('absence', 'Alert', 'Student Absent! Please return to seat.')
+                            self.last_alert_time = now
             else:
                 # 脸一回来，秒表清零
                 self.face_not_detected_time = None

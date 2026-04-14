@@ -88,7 +88,7 @@ class AttentionAnalyzer:
             p_sad = avg_probs[self.EMOTION_IDX['Sad']]
             p_surprise = avg_probs[self.EMOTION_IDX['Surprise']]
 
-            # 7 进 4 概率融合公式
+            # 7 进 4 概率融合公式（可能需要全部剔除，参数定义无根据）
             """
             # 激进风格：敏锐地捕捉每一丝异常情绪，但对yolo的检测结果精确度要求高，同时与后续的归一化操作强绑定
             raw_understand = 1.0 * p_happy + 0.3 * p_surprise

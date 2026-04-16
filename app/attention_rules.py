@@ -62,7 +62,7 @@ class AttentionAnalyzer:
 
             # 如果正在打哈欠或闭眼，强行剥夺 Happy 和 Surprise 的概率，防止 YOLO 误判
             if is_yawn or is_blink:
-                probs_clean = np.zeros(7) # 7个概率全变 0
+                probs_clean = np.zeros(7) # 7个概率全变
                 probs_clean[self.EMOTION_IDX['Neutral']] = 1.0  # 唯独 Neutral 设为 1.0
 
 
@@ -127,7 +127,7 @@ class AttentionAnalyzer:
                 # Perclos 公式: 闭眼率 + 哈欠率 * 0.2
                 perclos_val = (blink_count / total_p_frames) + (yawn_count / total_p_frames) * 0.2
 
-                # 如果超过疲劳阈值，直接将第五状态覆写上去！
+                # 如果超过疲劳阈值，直接将第五状态覆写上去！（直接覆写有点草率，后续可以改为Fatigue的概率占比逐渐增加）
                 if perclos_val > 0.38:
                     current_cognitive_state = "Fatigued"
 

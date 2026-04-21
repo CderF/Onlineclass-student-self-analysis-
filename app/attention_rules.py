@@ -70,7 +70,7 @@ class AttentionAnalyzer:
             self.micro_buffer.append((now, probs_clean))
             self.perclos_buffer.append((now, is_blink_frame, is_yawn))
 
-            # 核心：micro_buffer表情7维概率数组 剔除超过3秒的老数据 perclos_buffer 剔除超过8秒的老数据
+            # 核心：perclos_buffer 剔除超过8秒的老数据
             while self.micro_buffer and (now - self.micro_buffer[0][0]) > 3.0:
                 self.micro_buffer.popleft()
             while self.perclos_buffer and (now - self.perclos_buffer[0][0]) > 8.0:

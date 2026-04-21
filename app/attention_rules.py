@@ -97,7 +97,7 @@ class AttentionAnalyzer:
             raw_disgusted = 1.0 * p_disgust + 0.4 * p_anger + 0.3 * p_sad
             raw_neutral = 1.0 * p_neutral
             """
-            # 平衡风格：除了fear外左右表情概率系数均一致。
+            # 平衡风格：除了fear外左右表情概率系数均一致
             raw_understand = 1.0 * p_happy + 0.3 * p_surprise
             raw_doubt = 0.8 * p_anger + 0.5 * p_sad + 0.7 * p_surprise + 0.1 * p_fear
             raw_disgusted = 1.0 * p_disgust + 0.2 * p_anger + 0.5 * p_sad + 0.1 * p_fear

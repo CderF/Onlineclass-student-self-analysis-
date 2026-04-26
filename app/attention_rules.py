@@ -45,6 +45,7 @@ class AttentionAnalyzer:
         if has_face and all_probs is not None and len(all_probs) == 7:
 
             # 前向特征拦截：防止因为打哈欠或是闭眼了导致yolo误判表情，同时将误判的表情标签概率分配给Neutral(有些过于绝对了)
+            # 可以尝试写个自然指数惩罚？
             is_yawn = (mar > 0.65)
             is_blink_frame = (ear < 0.15)
             # 连续闭眼 2 秒计时器

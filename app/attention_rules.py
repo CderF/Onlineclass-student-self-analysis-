@@ -127,6 +127,7 @@ class AttentionAnalyzer:
                 yawn_count = sum(1 for item in self.perclos_buffer if item[2])
 
                 # Perclos 公式: 闭眼率 + 哈欠率 * 0.2
+                # 具体的计算公式系数仍需探讨
                 perclos_val = (blink_count / total_p_frames) + (yawn_count / total_p_frames) * 0.2
 
                 # 如果超过疲劳阈值，直接将第五状态覆写上去！（直接覆写有点草率，后续可以改为Fatigue的概率占比逐渐增加）

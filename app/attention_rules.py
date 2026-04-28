@@ -71,7 +71,7 @@ class AttentionAnalyzer:
             self.micro_buffer.append((now, probs_clean))
             self.perclos_buffer.append((now, is_blink_frame, is_yawn))
 
-            # 核心：perclos_buffer 剔除超过8秒的老数据
+            # 核心：perclos_buffer 剔除超过8秒的老数据 为什么是8秒
             while self.micro_buffer and (now - self.micro_buffer[0][0]) > 3.0:
                 self.micro_buffer.popleft()
             while self.perclos_buffer and (now - self.perclos_buffer[0][0]) > 8.0:
@@ -138,7 +138,7 @@ class AttentionAnalyzer:
             self.macro_buffer.append((now, current_cognitive_state))
 
         # 阶段二：60秒滑块窗口计算Score
-        # 核心：剔除超过 60.0 秒的老数据
+        # 核心：剔除超过 60.0 秒的老数据 为什么是60秒
         while self.macro_buffer and (now - self.macro_buffer[0][0]) > 60.0:
             self.macro_buffer.popleft()
 

@@ -120,7 +120,7 @@ class AttentionAnalyzer:
             max_idx = np.argmax(fused_probs)
             current_cognitive_state = states[max_idx]
 
-            # 计算 8 秒 Perclos 疲劳度，并行使一票否决权
+            # 计算 8 秒 Perclos 疲劳度 进行加权计算，逐渐降低分数
             if len(self.perclos_buffer) > 0 and (now - self.perclos_buffer[0][0]) >= 7.5:   #冷启动保护，先累计满7.5秒再计算
                 total_p_frames = len(self.perclos_buffer)
                 blink_count = sum(1 for item in self.perclos_buffer if item[1])

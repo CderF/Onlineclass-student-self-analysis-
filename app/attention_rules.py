@@ -77,6 +77,9 @@ class AttentionAnalyzer:
             while self.perclos_buffer and (now - self.perclos_buffer[0][0]) > 8.0:
                 self.perclos_buffer.popleft()
 
+            """
+            以下部分待修改，彻底舍弃7进4概率融合公式，改为使用Transfer Learning迁移学习
+            """
             # 提取纯概率数组进行平均计算
             probs_only = [item[1] for item in self.micro_buffer]
             avg_probs = np.mean(probs_only, axis=0)
@@ -89,15 +92,7 @@ class AttentionAnalyzer:
             p_sad = avg_probs[self.EMOTION_IDX['Sad']]
             p_surprise = avg_probs[self.EMOTION_IDX['Surprise']]
 
-            # 彻底舍弃7进4概率融合公式，改为使用Transfer Learning迁移学习
-            """
-            # 激进风格：敏锐地捕捉每一丝异常情绪，但对yolo的检测结果精确度要求高，同时与后续的归一化操作强绑定
-            raw_understand = 1.0 * p_happy + 0.3 * p_surprise
-            raw_doubt = 1.0 * p_anger + 1.0 * p_sad + 0.7 * p_surprise + 0.1 * p_fear
-            raw_disgusted = 1.0 * p_disgust + 0.4 * p_anger + 0.3 * p_sad
-            raw_neutral = 1.0 * p_neutral
-            """
-            # 平衡风格：除了fear外左右表情概率系数均一致
+
             raw_understand = 1.0 * p_happy + 0.3 * p_surprise
             raw_doubt = 0.8 * p_anger + 0.5 * p_sad + 0.7 * p_surprise + 0.1 * p_fear
             raw_disgusted = 1.0 * p_disgust + 0.2 * p_anger + 0.5 * p_sad + 0.1 * p_fear

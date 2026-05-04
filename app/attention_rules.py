@@ -115,6 +115,11 @@ class AttentionAnalyzer:
             current_cognitive_state = states[max_idx]
 
             # 计算 8 秒 Perclos 疲劳度 进行加权计算，逐渐降低分数
+            """
+                关于疲劳度Fatigue的计算，采用Perclos+眨眼频率+打哈欠频率+点头频率（对应权重分别为0.1，0.4，0.3，0.2）
+                Multimodal Detection of Emotional and Cognitive States in E-Learning Through Deep Fusion of Visual and Textual Data with NLP 
+            """
+
             if len(self.perclos_buffer) > 0 and (now - self.perclos_buffer[0][0]) >= 7.5:   #冷启动保护，先累计满7.5秒再计算
                 total_p_frames = len(self.perclos_buffer)
                 blink_count = sum(1 for item in self.perclos_buffer if item[1])

@@ -137,6 +137,11 @@ class AttentionAnalyzer:
             self.macro_buffer.append((now, current_cognitive_state))
 
         # 阶段二：60秒滑块窗口计算Score
+        """
+            核心计算公式还没有确定，关于具体要如何将疲劳度融入其中：
+                1. 直接参与到最终参与度分数计算。
+                2. 不参与到具体的数值计算，作为辅助的判断依据。
+        """
         # 核心：剔除超过 60.0 秒的老数据 为什么是60秒
         while self.macro_buffer and (now - self.macro_buffer[0][0]) > 60.0:
             self.macro_buffer.popleft()

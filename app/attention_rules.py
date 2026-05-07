@@ -177,7 +177,7 @@ class AttentionAnalyzer:
                     self.last_alert_time = now
             """
 
-        # 阶段三：空间物理规则最高优先级覆写 (一票否决)
+        # 阶段三：空间物理规则最高优先级覆写
 
             # 低头判定逻辑
             if has_face and delta_pitch is not None:

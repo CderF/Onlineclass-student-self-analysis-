@@ -114,7 +114,7 @@ class AttentionAnalyzer:
             max_idx = np.argmax(fused_probs)
             current_cognitive_state = states[max_idx]
 
-            # 计算 8 秒 Perclos 疲劳度 进行加权计算，逐渐降低分数
+            # 计算 8 秒 Perclos 疲劳度
             """
                 关于疲劳度Fatigue的计算，采用Perclos+眨眼频率+打哈欠频率+点头频率（对应权重分别为0.1，0.4，0.3，0.2）
                 Multimodal Detection of Emotional and Cognitive States in E-Learning Through Deep Fusion of Visual and Textual Data with NLP 

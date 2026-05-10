@@ -138,9 +138,12 @@ class AttentionAnalyzer:
 
         # 阶段二：60秒滑块窗口计算Score
         """
-            核心计算公式还没有确定，关于具体要如何将疲劳度融入其中：
-                1. 直接参与到最终参与度分数计算。
-                2. 不参与到具体的数值计算，作为辅助的判断依据。
+            核心参与度分数计算公式暂定为：
+                Score_Engagement = 0.56 * (1 - Score_Fatigue) + 0.44 * Score_emotion
+                
+                参考文献；Multimodal Detection of Emotional and Cognitive States in E-Learning Through Deep Fusion of Visual and Textual Data with NLP
+                鉴于原公式中纯视觉检测占比达80%，同时本文模型就是基于模块化设计的三个子模型共组成的，具有解耦性，因此在技术实现上移除文本情感检测模块并不会影响视觉特征提取
+                权重则来自将原公式中视觉部分的权重重新进行归一化所得
         """
         # 核心：剔除超过 60.0 秒的老数据 为什么是60秒
         while self.macro_buffer and (now - self.macro_buffer[0][0]) > 60.0:

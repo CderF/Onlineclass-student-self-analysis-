@@ -166,7 +166,7 @@ class AttentionAnalyzer:
             score = max(0, min(100, int(raw_score)))
 
             status_text = f"Cognitive: {current_cognitive_state.upper()}"
-            # 目前权重还没有替换成优化后的版本因此无法根据实际情况进行测试以便发现哪些弹窗有助于提高用户体验
+
             """
             # 基于专注度水平的弹窗
             if (d_count / total_frames) > 0.4 | (dis_count / total_frames) > 0.5:
@@ -179,9 +179,9 @@ class AttentionAnalyzer:
                     self.last_alert_time = now
             """
 
-        # 阶段三：空间物理规则最高优先级覆写
+        # 阶段三：空间物理规则最高优先级覆写　（有必要考虑是否有必要添加此功能）
 
-            # 低头判定逻辑
+            # 低头判定逻辑　
             if has_face and delta_pitch is not None:
                 if delta_pitch < self.PITCH_DOWN_THRESH:
                     self.last_known_pitch = delta_pitch

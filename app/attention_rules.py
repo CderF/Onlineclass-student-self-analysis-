@@ -17,7 +17,10 @@ class AttentionAnalyzer:
         self.last_alert_time = 0
         self.eyes_closed_start_time = None  # 用于记录连续闭眼的起始时间
 
-        #阶段一：7进4 表情标签转换为专注度标签 and Perclos升格为第5个专注度标签
+        """
+            yolo类别索引映射待更改
+            
+        """
         # 多模态融合时间戳滑动窗口（Yolo、Perclos）
         self.micro_buffer = deque()  # 3 秒微观表情概率: (now, all_probs_clean)
         self.perclos_buffer = deque()  # 8 秒疲劳特征缓冲: (now, is_blink, is_yawn)

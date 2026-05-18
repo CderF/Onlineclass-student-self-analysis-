@@ -144,8 +144,10 @@ class AttentionAnalyzer:
                 Score_Engagement = 0.56 * (1 - Score_Fatigue) + 0.44 * Score_emotion
                 
                 参考文献；Multimodal Detection of Emotional and Cognitive States in E-Learning Through Deep Fusion of Visual and Textual Data with NLP
-                鉴于原公式中纯视觉检测占比达80%，同时本文模型就是基于模块化设计的三个子模型共组成的，具有解耦性，因此在技术实现上移除文本情感检测模块并不会影响视觉特征提取
-                权重则来自将原公式中视觉部分的权重重新进行归一化所得
+                因为关联研究所构建的多模态参与度模型是由三个可解耦的子模型组成的，因此仅移除文本情感检测并不会对视觉检测模块造成影响。
+                同时由于参与度分数计算函数中疲劳检测与面部情感识别的权重达到了80%，因此可以认为视觉模态可以占据主导地位，进而可以认为即使仅保留视觉检测依然可以保证较高的系统效能
+                最后，为了保证权重之和为1而进行了归一化处理，使疲劳检测与面部情感识别维持原有的相对重要性比例。
+
         """
         # 核心：剔除超过 60.0 秒的老数据 为什么是60秒
         while self.macro_buffer and (now - self.macro_buffer[0][0]) > 60.0:

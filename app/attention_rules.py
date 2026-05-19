@@ -22,7 +22,7 @@ class AttentionAnalyzer:
             
         """
         # 多模态融合时间戳滑动窗口（Yolo、Perclos）
-        self.micro_buffer = deque()  # 3 秒微观表情概率: (now, all_probs_clean)
+        self.micro_buffer = deque()  # 3 秒微观表情概率: (now, all_probs_clean) 需更改
         self.perclos_buffer = deque()  # 8 秒疲劳特征缓冲: (now, is_blink, is_yawn)
         self.macro_buffer = deque()  # 60 秒宏观离散标签: (now, state_label)
 

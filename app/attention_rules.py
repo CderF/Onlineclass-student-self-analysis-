@@ -47,7 +47,7 @@ class AttentionAnalyzer:
         # 表情标签前向拦截 + 迁移学习 + 疲劳惩罚
         if has_face and all_probs is not None and len(all_probs) == 7:
 
-            # 前向特征拦截：防止因为打哈欠或是闭眼了导致yolo误判表情，同时将误判的表情标签概率分配给Neutral（为什么要给Neutral，若未找到理论依据的话则舍弃本功能）
+            # 前向特征拦截：防止因为打哈欠或是闭眼了导致yolo误判表情，同时将误判的表情标签概率分配给Neutral（如果要加入前向拦截的话应该也需要找到理论依据支持）
             # 对于研究本身来说，前向特征拦截的作用不大 可以考虑删除
 
             is_yawn = (mar > 0.65)
@@ -132,7 +132,7 @@ class AttentionAnalyzer:
                 # 这次计算的是整体疲劳度指数，不再只计算Perclos
                 perclos_val = (blink_count / total_p_frames) + (yawn_count / total_p_frames) * 0.2
 
-                # 如果超过疲劳阈值，直接将第五状态覆写上去！（废除）
+                # 如果超过疲劳阈值，直接将第五状态覆写上去！（废除œ）
                 # 改为（1-疲劳指数）* 系数 作为惩罚项
                 if perclos_val > 0.38:
                     current_cognitive_state = "Fatigued"

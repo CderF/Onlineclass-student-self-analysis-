@@ -124,7 +124,7 @@ class AttentionAnalyzer:
                 Multimodal Detection of Emotional and Cognitive States in E-Learning Through Deep Fusion of Visual and Textual Data with NLP 
             """
 
-            if len(self.perclos_buffer) > 0 and (now - self.perclos_buffer[0][0]) >= 7.5:   #冷启动保护，先累计满7.5秒再计算
+            if len(self.perclos_buffer) > 0 and (now - self.perclos_buffer[0][0]) >= 7.5:   #冷启动保护，先累计满7.5秒再计算 （具体的冷启动时间其实可以根据之前的滑动窗口大小来定）
                 total_p_frames = len(self.perclos_buffer)
                 blink_count = sum(1 for item in self.perclos_buffer if item[1])
                 yawn_count = sum(1 for item in self.perclos_buffer if item[2])

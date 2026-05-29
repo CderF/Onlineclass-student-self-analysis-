@@ -137,7 +137,7 @@ class AttentionAnalyzer:
                 if perclos_val > 0.38:
                     current_cognitive_state = "Fatigued"
 
-            # 将这个最终决断的状态存入 1 分钟的宏观窗口
+            # 将这个最终决断的状态存入60秒的宏观窗口
             self.macro_buffer.append((now, current_cognitive_state))
 
         # 阶段二：60秒滑块窗口计算Score

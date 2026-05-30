@@ -169,7 +169,7 @@ class AttentionAnalyzer:
             # （废除）动态 Score 公式 (引入 Fatigued 的 -0.5 重磅惩罚)
             raw_score = (1.0 * u_count + 0.9 * n_count + 0.7 * d_count + 0.1 * dis_count - 0.5 * f_count) / total_frames * 100
 
-            # 因为存在负权重，确保分数不会掉到 0 以下，最高不超过 100
+            # （废除）因为存在负权重，确保分数不会掉到 0 以下，最高不超过 100
             score = max(0, min(100, int(raw_score)))
 
             status_text = f"Cognitive: {current_cognitive_state.upper()}"

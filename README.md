@@ -1,96 +1,217 @@
-# Self-Analysis System Demo
+# 智能课堂学生自主分析系统 (Online Class Student Self-Analysis System)
 
-本项目为桌面端学生注意力/专注度分析演示（基于 PyQt5 + qfluentwidgets + YOLO/OpenCV）。
+🚀 **基于 PyQt5 + qfluentwidgets + YOLO26 + MediaPipe FaceMesh 的跨平台桌面级学生课堂专注度与注意力实时监控及统计分析系统**。
 
-## 概览
-- 目标：通过摄像头实时检测学生注意力状态（专注/分心/打瞌睡等），并生成统计报告。
-- 类型：桌面 GUI 应用（Python + PyQt）。
+本项目从学术前沿教学与人机交互逻辑出发，将几何表情特征算子与多模态时序深度融合。通过轻量级的摄像头画面采集，在保障用户隐私的前提下，实现学生课堂状态的实时高精度感知、注意力评分动态追踪、开小差与疲劳预警，并生成完整的学习会话统计报表。
 
-## 主要特性
-- 实时视频流采集与处理（在 `QThread` 中运行推理）。
-- **双模态推理**：YOLOv5 用于检测人体/手机/人脸等宏观目标，MediaPipe FaceMesh 提取面部 478 个关键点并计算 EAR/MAR，用于精细的眼睛闭合与张嘴监测。
-- 注意力评分引擎封装在 `app/attention_rules.py` 中，可扩展规则。
-- UI 支持启动/停止、状态着色、高 DPI 缩放及安全退出（点击窗口关闭时自动释放摄像头）。
-- 可视化界面：实时监控页面与占位的统计报告页面（`app/view/`）。
-- 兼容 macOS M1/ARM：YOLO 推理类自动选择 `mps` 设备，并修补了 `pathlib.WindowsPath` 的跨平台问题。
+---
 
-## 快速开始
+## 🌟 核心技术亮点与架构设计
 
-1) 创建虚拟环境（推荐使用 conda）：
+### 1. 双通道多模态特征融合检测
+系统摒弃了传统的单模型检测方案，采用 **MediaPipe 几何点位计算** 与 **YOLO 卷积特征分类** 双通道协同工作的架构：
+*   **MediaPipe 通道**：实时提取面部 478 个三维面部网格关键点（Face Mesh），获取高精度的眼睛睁合度（EAR）与张嘴度（MAR）；同时，通过最具代表性的 6 个三维空间锚点（鼻尖、下巴、双眼角、双嘴角）解算 3D 头部姿态角。
+*   **YOLO 通道**：利用 MediaPipe 动态计算出的人脸边界框（Bounding Box）进行 **20% 边缘外扩裁剪**，将裁剪后的脸部 ROI（感兴趣区域）送入轻量级面部表情分类模型（YOLO-cls），大大降低了宏观背景噪声对表情分类器的干扰，提升了推理帧率。
+
+### 2. 精细化三维头部姿态估计 (PnP Solver)
+利用 OpenCV 的 `solvePnP` 迭代算法，将 2D 像素坐标与 3D 面部通用几何模型进行映射。
+*   **欧拉角解算**：实时获取头部 Pitch（俯仰角）、Yaw（偏航角）和 Roll（翻滚角）。
+*   **物理直觉规范化**：针对欧拉角计算中常见的万向节死锁与角度跳变问题，算法强制限制旋转区间在人类生理极限（$-90^\circ$ 至 $+90^\circ$）内，并将低头动作统一映射为负 Pitch 轴度数，为低头检测提供高可靠性数据输入。
+
+### 3. 自适应基准校准系统 (Adaptive Median Calibration)
+由于摄像头摆放位置、学生坐姿和桌椅高度因人而异，硬编码的角度阈值往往导致极高的误报率。
+*   系统启动后进入 **3秒自适应校准期**，在校准期内累计学生的 Pitch 和 Yaw 角度值。
+*   校准结束时，利用 **中位数（Median）物理滤波** 锁定每个学生专属的“正视屏幕基准线”，彻底消除单帧极值或眨眼离群值对基准线的影响。后续监控均基于与该基准线的绝对偏差（$\Delta\text{Pitch}, \Delta\text{Yaw}$）进行判定。
+
+### 4. 前向特征拦截与时序平滑评分引擎
+*   **前向特征拦截 (Pre-inference Masking)**：当 MediaPipe 几何算子检测到学生处于打哈欠（$\text{MAR} > 0.65$）或长闭眼（连续闭眼 $> 2$秒）时，系统启动拦截机制，强行屏蔽 YOLO 表情分类器可能产生的误判（例如眨眼/打哈欠容易被误分类为 Happy 或 Surprise），剥夺其概率并平滑迁移至 Neutral（自然）状态。
+*   **双重时间滑动窗平滑**：
+    *   **微观平滑（3秒）**：对表情概率矢量进行均值平滑，消除逐帧抖动。
+    *   **宏观追踪（60秒）**：使用 60 秒时序队列缓存决断状态，保障评分指标的连续与稳定。
+*   **多维疲劳综合指数 (Fatigue Index)**：根据现代教学文献模型，综合 PERCLOS（眼睑闭合时间比例）、眨眼频率、打哈欠频率及点头频率动态加权计算疲劳指数，当疲劳指标超限时，自动切入疲劳状态。
+
+### 5. 智能行为退化与惯性冗余逻辑
+针对学生特有的课堂行为（如“低头记笔记”与“低头玩手机/走神”的区分，以及“短暂遮挡”与“离席”的区分），系统设计了复杂的退化矩阵：
+*   **低头判定矩阵**：连续低头（$\Delta\text{Pitch} < -15.0^\circ$）超过 15 秒时：
+    *   若低头前学生专注度分数 $\ge 60$ 分，系统判定其处于 **TAKING NOTES (记笔记)** 专注状态，不予扣分；
+    *   若低头前分数 $< 60$ 分，系统判定为 **DISTRACTED (分心)** 状态，并以超时时间的二次方曲线（$\Delta t^2 \times 0.2$）进行非线性扣分惩罚，并触发异步警告。
+*   **面部丢失（离席/遮挡）退化**：面部信息丢失时：
+    *   **惯性缓冲保护**：若丢失前学生处于“记笔记”状态，系统提供 **5秒的惯性冗余**。在 5 秒内依然记为记笔记状态，不扣分，数据平滑填充；
+    *   **短时离席曲线**：若非记笔记状态下丢失，系统在 120 秒内套用 **三次方收敛衰减曲线**（$\text{Decay} = (\frac{t}{120})^3$），呈现“先缓后急”的扣分趋势，契合人体行为心理；
+    *   **长时离席判定**：超过 120 秒，状态彻底退化为 **ABSENT**，分数归零，并发出高频离席警报。
+
+---
+
+## 🛠 系统工作流与架构图
+
+### 1. 多模态数据融合与状态评估流
+```mermaid
+flowchart TD
+    A[摄像头视频帧] --> B[MediaPipe FaceMesh]
+    B -->|478 关键点| C[几何算子计算]
+    C -->|计算 EAR / MAR| D[闭眼/打哈欠判定]
+    C -->|PnP 姿态解算| E[头部 Pitch/Yaw/Roll]
+    B -->|人脸 Bounding Box| F[人脸区域动态裁剪]
+    F --> G[YOLO-cls 表情识别]
+    G -->|7类表情原始概率| H{前向特征拦截机制}
+    D -->|闭眼/哈欠信号| H
+    H -->|平滑/置换修正| I[3秒微观滑动窗平滑]
+    I --> J[多模态状态融合决策]
+    E -->|自适应基准差值| J
+    J -->|认知状态判定| K[60秒宏观时序队列]
+    K --> L[专注度评分引擎 & 状态退化矩阵]
+    L -->|实时分数 & 预警信号| M[PyQt 主界面更新]
+```
+
+### 2. 多线程安全交互机制
+```mermaid
+sequenceDiagram
+    participant UI as PyQt 主线程 (MonitorInterface)
+    participant Thread as 后台计算线程 (CameraThread)
+    participant HW as 摄像头硬件
+
+    UI->>Thread: 1. 实例化 & 启动线程 start()
+    activate Thread
+    Thread->>HW: 2. 打开视频流 cv2.VideoCapture(0)
+    activate HW
+    Thread->>UI: 3. 发送状态校准信号 (CALIBRATING)
+    Note over Thread: 4. 前 3 秒数据采集，计算中位数基准线
+    loop 每帧循环处理
+        HW-->>Thread: 读取 BGR 图像帧
+        Note over Thread: 5. 运行 MediaPipe + YOLO 混合推理
+        Note over Thread: 6. 专注度评分引擎 & 退化判定
+        Thread->>UI: 发送 change_pixmap_signal (RGB QPixmap)
+        Thread->>UI: 发送 update_score_signal (Score 0-100)
+        Thread->>UI: 发送 update_status_signal (状态文本)
+        opt 触发开小差/疲劳/离席预警
+            Thread->>UI: 发送 alert_signal (异步警告)
+            Note over UI: 弹出非阻塞式 InfoBar 通知 & 播放提示音
+        end
+    end
+    UI->>Thread: 7. 触发关闭/停止指令 stop()
+    Thread->>HW: 8. 安全释放摄像头 release()
+    deactivate HW
+    Thread->>UI: 9. 线程彻底退出信号
+    deactivate Thread
+```
+
+---
+
+## 📂 项目目录结构说明
+
+```plaintext
+self-analysis-system/
+├── main.py                 # 应用唯一入口，配置高DPI缩放、主窗体框架与侧边导航
+├── requirements.txt        # 核心第三方依赖库列表
+├── AGENTS.md               # 面向 AI 协作代理的设计规范与代码风格约束文件
+├── README.md               # 本项目系统设计、数学机制与部署说明文档
+├── weights/
+│   └── best.pt             # YOLO 面部表情分类模型权重文件 (本地物理存储，不提交 Git)
+└── app/
+    ├── __init__.py         # 模块包初始化
+    ├── camera_thread.py    # QThread 后台计算线程，主导摄像头 IO 与双通道 ML 推理循环
+    ├── yolo_inference.py   # 封装 YOLO-cls 推理，集成多设备自动分配 (CPU/CUDA/MPS) 
+    ├── mediapipe_inference.py # 封装 FaceMesh 计算，包含 PnP 姿态估计与人脸 ROI 裁剪框导出
+    ├── attention_rules.py  # 注意力规则与决策评分引擎 (含前向拦截、退化矩阵与非线性扣分)
+    └── view/
+        ├── __init__.py     # 视图模块初始化
+        ├── monitor_interface.py # 实时监控界面，基于 Fluent 组件，集成非阻塞异步 InfoBar
+        └── report_interface.py  # 学习统计报表界面，预留 Matplotlib/PyQtGraph 可视化图表接口
+```
+
+---
+
+## 🚀 快速开始
+
+### 1. 环境准备 (Mac M1/M2/Intel & Windows)
+推荐使用虚拟环境进行管理，以下以 Conda 为例：
 
 ```bash
+# 1. 创建并激活 Python 3.10 虚拟环境
 conda create -n sas-demo python=3.10 -y
 conda activate sas-demo
-# 基本依赖
+
+# 2. 安装基础依赖与 GUI 库
 pip install PyQt5 qfluentwidgets opencv-python numpy
-# YOLOv5 依赖
+
+# 3. 安装深度学习与推理依赖
 pip install torch torchvision ultralytics
-# MediaPipe 用于面部网格
+
+# 4. 安装 MediaPipe 几何检测器
 pip install mediapipe
 ```
 
-说明：
-- 如果使用 GPU，请根据系统和 CUDA 版本安装合适的 `torch` 版本。
-- macOS M1/M2 用户可利用 `pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cpu` 或直接 `mps` 版本。
+> **Mac M1/M2 芯片用户提示**：
+> 系统中已内置了 MPS 设备自动检测。如果需要显式利用 Apple Silicon 硬件加速，请直接安装支持 MPS 的 PyTorch 编译版本。
+> 本项目的 `yolo_inference.py` 中已包含 Windows 与 Posix 跨平台路径的反序列化补丁，完美支持 macOS 平台直接加载在 Windows 下训练的 YOLO 模型。
 
-2) 准备权重文件
+### 2. 权重部署
+请将表情分类权重文件（例如从 RAF-DB 训练导出的分类权重 `best.pt`）放置于项目根目录的 `weights/` 下：
+```bash
+mkdir -p weights
+# 将您的权重放入 weights 目录下，命名为 best.pt
+```
+*注：由于 `.pt` 文件体积较大，项目中的 `.gitignore` 已默认忽略 `weights/*.pt`，请避免将大型二进制模型推送到远程仓库。*
 
-将训练好的权重放在 `weights/` 目录（示例：`weights/best.pt`）。请不要将大型权重推送到远程仓库，建议在 `.gitignore` 中忽略 `weights/*.pt`。
-
-3) 运行应用：
-
+### 3. 运行系统
 ```bash
 python main.py
 ```
+*启动前请确保系统已赋予终端/IDE 摄像头访问权限。若在无摄像头的环境下进行调试，可进入 `app/camera_thread.py` 将 `cv2.VideoCapture(0)` 修改为视频文件路径。*
 
-运行前请确保系统能访问摄像头；若无摄像头，可在 `app/camera_thread.py` 中修改为读取视频文件。
+---
 
-## 项目结构（简要）
+## 📊 状态判定机制与数学公式
 
-- `main.py`：应用入口，创建主窗口、设置高 DPI 支持并管理导航。
-- `app/`：核心代码。
-  - `camera_thread.py`：继承自 `QThread`，负责摄像头读入、YOLO/MediaPipe 推理和 UI 信号发送。
-  - `yolo_inference.py`：封装YOLOv5推理，自动选择 MPS/CUDA/CPU 并处理跨平台路径问题。
-  - `mediapipe_inference.py`：使用 MediaPipe FaceMesh 计算 EAR、MAR，并绘制面部网格。
-  - `attention_rules.py`：注意力判定规则与统计逻辑（包含手机检测、PERCLOS疲劳和人脸消失报警）。
-  - `view/monitor_interface.py`：监控界面（实时视频、启动/停止按钮、状态标签和异步弹窗）。
-  - `view/report_interface.py`：统计报表展示页面，包含统计卡片与图表占位。
-- `weights/`：存放模型权重（请勿提交大型权重文件，建议添加 `weights/*.pt` 到 `.gitignore`）。
+### 1. 表情认知状态重映射
+YOLO 输出的 7 类原生表情概率向量 $P = [p_{\text{anger}}, p_{\text{disgust}}, p_{\text{fear}}, p_{\text{happy}}, p_{\text{neutral}}, p_{\text{sad}}, p_{\text{surprise}}]$ 通过加权公式映射为 4 维课堂状态：
 
-- `app/attention_rules.py` 以及 `app/mediapipe_inference.py` 为近期新增，用于扩展更精细的生物特征分析。
+$$\begin{aligned}
+R_{\text{Understand}} &= 1.0 \cdot p_{\text{happy}} + 0.3 \cdot p_{\text{surprise}} \\
+R_{\text{Doubt}}      &= 0.8 \cdot p_{\text{anger}} + 0.5 \cdot p_{\text{sad}} + 0.7 \cdot p_{\text{surprise}} + 0.1 \cdot p_{\text{fear}} \\
+R_{\text{Disgusted}}  &= 1.0 \cdot p_{\text{disgust}} + 0.2 \cdot p_{\text{anger}} + 0.5 \cdot p_{\text{sad}} + 0.1 \cdot p_{\text{fear}} \\
+R_{\text{Neutral}}    &= 1.0 \cdot p_{\text{neutral}}
+\end{aligned}$$
 
-完整文件说明参见项目中的 `AGENTS.md`。
+经过归一化处理后，取最大概率对应的维度作为当前的瞬时表情认知状态。
 
-完整文件说明见项目中的 `AGENTS.md` 文档。
+### 2. 疲劳度（Fatigue Index）计算
+根据教育生理学模型，综合 8 秒滑动窗口内的生物特征：
 
-## 开发注意事项
+$$\text{Fatigue} = 0.1 \cdot \text{PERCLOS} + 0.4 \cdot \text{BlinkFreq} + 0.3 \cdot \text{YawnFreq} + 0.2 \cdot \text{NodFreq}$$
 
-- 所有耗时的 CV/ML 操作必须放入后台线程（`QThread`），避免阻塞主线程。
-- 在后台线程中通过信号将处理结果传回 UI，禁止直接修改 UI 控件。
-- 图像格式：OpenCV 使用 BGR，显示前需转换为 RGB（`cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)`）。
-- 路径处理请使用 `pathlib` 或 `os.path`，避免硬编码绝对路径。- 应在 `main.py` 中启用 `Qt.AA_EnableHighDpiScaling` 与 `AA_UseHighDpiPixmaps` 以支持高分屏。
-- 关闭窗口时会自动安全停止摄像头线程，避免死锁或设备占用。
-- 注意更新 `weights` 目录后动态重新加载或重启程序。
-- 若添加新依赖（如 MediaPipe），请在本 README 的依赖列表中备注。
+当综合评分超过 $0.38$ 阈值时，认知状态将被强行覆写为 `Fatigued`。
 
-## 调试与测试
+### 3. 基础专注度得分 (Macro Score)
+在 60 秒宏观统计时间窗内，各类状态占比对应的基准得分公式为：
 
-- 语法检查：
+$$\text{Score}_{\text{macro}} = \frac{1.0 \cdot N_{\text{Understand}} + 0.9 \cdot N_{\text{Neutral}} + 0.7 \cdot N_{\text{Doubt}} + 0.1 \cdot N_{\text{Disgusted}} - 0.5 \cdot N_{\text{Fatigued}}}{N_{\text{total\_frames}}} \times 100$$
 
-```bash
-python -m py_compile main.py
-```
+### 4. 离席三次方衰减公式
+当面部完全丢失（AWAY 状态），且非记笔记惯性期时，得分按时间 $t$ 采用三次方曲线进行非线性平滑衰减：
 
-- 建议使用 `flake8`/`ruff` 做静态检查，针对更改的文件运行即可。
+$$\text{Score}(t) = \text{Score}_{\text{before\_absent}} \cdot \left[1 - \left(\frac{t}{120}\right)^3\right], \quad (0 \le t \le 120)$$
 
-## 常见问题
+---
 
-- 无法打开摄像头：请检查系统权限（macOS 需在“系统偏好设置 → 隐私与安全性”允许摄像头访问）。
-- 推理速度慢：可考虑使用更小的模型、降低输入分辨率或使用 GPU 版本的 PyTorch。
+## 📝 开发者规范 (Developer Guidelines)
 
-## 下一步计划
+为保障系统的稳定性与界面流畅度，在修改或扩展本项目时，请严格遵守以下开发规范：
+1.  **UI 线程安全性（Critical Constraint）**：
+    *   **严禁**在主线程（UI 线程）中进行耗时的 CV 图像处理或 YOLO 推理操作，否则会导致界面卡死。
+    *   **严禁**从后台线程直接修改、读写 PyQt UI 控件。所有的跨线程通信、图像传递、弹窗预警，必须通过 `pyqtSignal` 在主线程对应的槽函数中安全执行。
+2.  **图像颜色空间转换**：
+    *   OpenCV 在读取和处理图像时使用 **BGR** 颜色空间，而 PyQt 显示图像（QImage, QPixmap）前，必须通过 `cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)` 转换为 **RGB** 空间，否则会导致画面偏色。
+3.  **无阻塞式交互**：
+    *   避免在实时摄像头线程运行期间使用 `QMessageBox` 等阻塞式弹窗。项目已完美集成 `qfluentwidgets` 的 `InfoBar` 异步浮动警报机制，可实现平滑的气泡通知。
+4.  **高 DPI 屏适配**：
+    *   系统在 `main.py` 入口处配置了 `Qt.AA_EnableHighDpiScaling` 及 `Qt.HighDpiScaleFactorRoundingPolicy.PassThrough`，支持 4K 等高分屏的高清缩放。设计新 UI 时应优先采用弹性布局（Layout）而非硬编码绝对像素。
 
-- 优化模型：目前有大致两个方向。一是直接摒弃YOLO系列，该有其他模型或者自己构造新的CNN。（难度较大）二是使用更新的YOLO同时对模型重新训练并进行微调以优化监测效果。（难度较小，但是没什么创新）
-- 增加低头检测识别判断。
-- 完成图形化分析模块的编写
-- 旨在跨过单帧扫描迈向理解短时间内情绪变化
+---
+
+## 🗺 未来规划与待办 (Roadmap)
+
+- [ ] **可视化报表深度编写**：在 `report_interface.py` 中引入 `pyqtgraph` 或 `matplotlib` 画布，实现 60 秒专注度曲线时序流图、疲劳分布饼图和专注热力图的实时渲染与历史导入。
+- [ ] **高精度低头识别细化**：利用三维姿态角中的 Pitch 变动结合人脸面部网格纵向收缩比，构建更鲁棒的低头动作辨识分类器。
+- [ ] **情绪理解时序特征化**：将基于单帧的浅层特征分类器升级为时序行为识别，分析学生在 5~10 秒内的情绪转变轨迹，迈向长时序细粒度情感计算。
+- [ ] **更小模型的量化与微调**：对自建 RAF-DB 数据集训练出的表情模型进行 TensorRT / ONNX / CoreML 量化压缩，使轻量级 CPU 设备也能流畅保持 30FPS+ 的满帧运行体验。

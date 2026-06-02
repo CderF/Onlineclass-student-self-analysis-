@@ -49,7 +49,7 @@ class ExpressionClassifier:
         top1_class = self.classes[top1_idx]
         top1_conf = probs.top1conf.item()
 
-        # 2. 提取所有类别的概率分布 (为1分钟时序平滑矩阵做准备)
-        all_probs = probs.data.cpu().numpy()
+        # 2. 提取所有类别的概率分布，转换为 {类别名: 概率} 字典格式
+        prob_dict = {self.classes[i]: probs.data[i].item() for i in range(len(self.classes))}
 
-        return top1_class, top1_conf, all_probs
+        return top1_class, top1_conf, prob_dict

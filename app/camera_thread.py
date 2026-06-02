@@ -76,9 +76,9 @@ class CameraThread(QThread):
                             top1_class, top1_conf, all_probs = self.classifier.process_face(face_crop)
                             current_expression = top1_class
 
-                            # 直观展示：将识别到的表情绘制在人脸框上方
+                            # 直观展示：将识别到的参与度状态绘制在人脸框上方
                             cv2.rectangle(final_frame, (x_min, y_min), (x_max, y_max), (255, 0, 0), 2)
-                            cv2.putText(final_frame, f"Exp: {top1_class} ({top1_conf:.2f})",
+                            cv2.putText(final_frame, f"State: {top1_class} ({top1_conf:.2f})",
                                         (x_min, max(20, y_min - 10)),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
 

@@ -55,10 +55,9 @@ flowchart TD
     F --> G[YOLO-cls 参与度直接分类]
     G -->|4类参与度原始概率| H{前向特征拦截机制}
     D -->|闭眼/哈欠信号| H
-    H -->|平滑/置换修正| I[3秒微观滑动窗平滑]
-    I --> J[多模态状态融合决策]
+    H -->|置换修正| J[多模态状态融合决策]
     E -->|自适应基准差值| J
-    J -->|认知状态判定| K[60秒宏观时序队列]
+    J -->|直接状态决断| K[60秒宏观时序队列]
     K --> L[专注度评分引擎 & 状态退化矩阵]
     L -->|实时分数 & 预警信号| M[PyQt 主界面更新]
 ```
@@ -164,13 +163,13 @@ python main.py
 ## 📊 状态判定机制与数学公式
 
 ### 1. 参与度认知状态直接分类
-在系统升级后，YOLO 推理模型直接输出 4 类参与度标签（即 `Understand`、`Doubt`、`Disgusted`、`Neutral`），因此舍弃了旧架构中的多模态情感概率融合公式。
+在系统升级后，YOLO 推理模型直接输出 4 类参与度标签（即 `Understand`、`Doubt`、`Disgusted`、`Neutral`），因此不需要旧架构中的情感概率融合计算，同时也舍弃了 3 秒表情平滑滑动窗口（micro_buffer）。
 
-系统通过 3 秒微观时间滑动窗口（micro_buffer）对这 4 个类别的概率分布进行均值平滑处理以消除逐帧抖动：
+系统直接对当前帧输出的 4 个类别概率分布进行极值选择：
 
-$$\text{Avg}(p_c) = \frac{1}{N} \sum_{i=1}^{N} p_{c, i}, \quad c \in \{\text{Understand}, \text{Doubt}, \text{Disgusted}, \text{Neutral}\}$$
+$$\text{State}_{\text{instant}} = \arg\max_{c} (p_c), \quad c \in \{\text{Understand}, \text{Doubt}, \text{Disgusted}, \text{Neutral}\}$$
 
-最终，取滑动平均概率最大的维度类别作为当前的微观瞬时参与度状态。
+最终，取当前帧概率最大的维度类别作为当前的瞬时参与度状态，并直接送入 60 秒宏观追踪滑动窗口（macro_buffer）中。
 
 ### 2. 疲劳度（Fatigue Index）计算
 根据教育生理学模型，综合 8 秒滑动窗口内的生物特征：

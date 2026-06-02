@@ -17,8 +17,7 @@ class AttentionAnalyzer:
         self.last_alert_time = 0
         self.eyes_closed_start_time = None  # 用于记录连续闭眼的起始时间
 
-        # 多模态融合时间戳滑动窗口（Yolo、Perclos）
-        self.micro_buffer = deque()  # 3 秒微观参与度概率: (now, all_probs_clean)
+        # 多模态融合时间戳滑动窗口（Perclos、Macro）
         self.perclos_buffer = deque()  # 8 秒疲劳特征缓冲: (now, is_blink, is_yawn)
         self.macro_buffer = deque()  # 60 秒宏观离散标签: (now, state_label)
 
@@ -59,23 +58,15 @@ class AttentionAnalyzer:
                 probs_clean = {k: 0.0 for k in all_probs.keys()}
                 probs_clean['Neutral'] = 1.0
 
-            # 存入带时间戳的数据包裹
-            self.micro_buffer.append((now, probs_clean))
+            # 存入带时间戳的 Perclos 疲劳缓冲
             self.perclos_buffer.append((now, is_blink_frame, is_yawn))
 
             # 核心：滑动窗口剔除老数据
-            while self.micro_buffer and (now - self.micro_buffer[0][0]) > 3.0:
-                self.micro_buffer.popleft()
             while self.perclos_buffer and (now - self.perclos_buffer[0][0]) > 8.0:
                 self.perclos_buffer.popleft()
 
-            # 提取概率字典列表，并计算 3 秒滑动窗口内的各类平均概率
-            avg_probs = {}
-            for k in all_probs.keys():
-                avg_probs[k] = np.mean([item[1][k] for item in self.micro_buffer])
-
-            # 取平均概率最大值作为当前微观窗口的基础离散状态
-            current_cognitive_state = max(avg_probs, key=avg_probs.get)
+            # 直接取当前帧概率最大值作为基础离散状态
+            current_cognitive_state = max(probs_clean, key=probs_clean.get)
 
             # 计算 8 秒 Perclos 疲劳度
             """

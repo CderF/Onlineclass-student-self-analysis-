@@ -44,7 +44,7 @@ class AttentionAnalyzer:
 
         current_cognitive_state = "Neutral"  # 默认状态
 
-        # 表情标签前向拦截 + 迁移学习 + 疲劳惩罚
+        # 表情标签前向拦截（可删除） + 迁移学习 + 疲劳惩罚
         if has_face and all_probs is not None and len(all_probs) == 7:
 
             # 前向特征拦截：防止因为打哈欠或是闭眼了导致yolo误判表情，同时将误判的表情标签概率分配给Neutral（如果要加入前向拦截的话应该也需要找到理论依据支持）

@@ -26,7 +26,7 @@ class AttentionAnalyzer:
         self.perclos_buffer = deque()  # 8 秒疲劳特征缓冲: (now, is_blink, is_yawn)
         self.macro_buffer = deque()  # 60 秒宏观离散标签: (now, state_label)
 
-        # YOLO 类别索引映射（具体标签待确认）
+        # YOLO 类别索引映射
         self.EMOTION_IDX = {
             'Anger': 0, 'Disgust': 1, 'Fear': 2, 'Happy': 3,
             'Neutral': 4, 'Sad': 5, 'Surprise': 6

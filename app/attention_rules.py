@@ -132,7 +132,7 @@ class AttentionAnalyzer:
                 # 这次计算的是整体疲劳度指数，不再只计算Perclos
                 perclos_val = (blink_count / total_p_frames) + (yawn_count / total_p_frames) * 0.2
 
-                # 如果超过疲劳阈值，直接将第五状态覆写上去！（废除œ）
+                # 如果超过疲劳阈值，直接将第五状态覆写上去！（废除）
                 # 改为（1-疲劳指数）* 系数 作为惩罚项
                 if perclos_val > 0.38:
                     current_cognitive_state = "Fatigued"

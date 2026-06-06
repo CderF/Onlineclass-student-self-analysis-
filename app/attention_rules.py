@@ -167,6 +167,7 @@ class AttentionAnalyzer:
             f_count = macro_list.count("Fatigued")  # 疲劳状态不应该特别被升格出来
 
             # （废除）动态 Score 公式 (引入 Fatigued 的 -0.5 重磅惩罚)
+            # （更改）Score_engagement = 0.5625 * (Score_Fatigue) + 0.4375 * (1.0 * u_count + 0.5 * n_count + 0.7 * d_count + 0.1 * dis_count)
             raw_score = (1.0 * u_count + 0.9 * n_count + 0.7 * d_count + 0.1 * dis_count - 0.5 * f_count) / total_frames * 100
 
             # （废除）因为存在负权重，确保分数不会掉到 0 以下，最高不超过 100

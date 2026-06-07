@@ -16,6 +16,7 @@ class AttentionAnalyzer:
         self.score_before_absent = 100
         self.last_alert_time = 0
         self.eyes_closed_start_time = None  # 用于记录连续闭眼的起始时间
+        self.perclos_val = 0.0
 
         # 多模态融合时间戳滑动窗口（Perclos、Macro）
         self.perclos_buffer = deque()  # 8 秒疲劳特征缓冲: (now, is_blink, is_yawn)
@@ -80,12 +81,9 @@ class AttentionAnalyzer:
                 blink_count = sum(1 for item in self.perclos_buffer if item[1])
                 yawn_count = sum(1 for item in self.perclos_buffer if item[2])
 
-                # 这次计算的是整体疲劳度指数，不再只计算Perclos
-                perclos_val = (blink_count / total_p_frames) + (yawn_count / total_p_frames) * 0.2
-
-                # 如果超过疲劳阈值，直接将第五状态覆写上去！
-                if perclos_val > 0.38:
-                    current_cognitive_state = "Fatigued"
+                # 计算疲劳度，限制在 0.0 到 0.1 之间
+                raw_perclos = (blink_count / total_p_frames) + (yawn_count / total_p_frames) * 0.2
+                self.perclos_val = min(1.0, max(0.0, raw_perclos))
 
             # 将这个最终决断的状态存入60秒的宏观窗口
             self.macro_buffer.append((now, current_cognitive_state))
@@ -114,10 +112,11 @@ class AttentionAnalyzer:
             d_count = macro_list.count("Doubt") #疑惑状态
             dis_count = macro_list.count("Disgusted")   #厌烦状态
             n_count = macro_list.count("Neutral")   #自然听课状态
-            f_count = macro_list.count("Fatigued")  # 疲劳状态不应该特别被升格出来
 
-            # （废除）动态 Score 公式 (引入 Fatigued 的 -0.5 重磅惩罚)
-            raw_score = (1.0 * u_count + 0.9 * n_count + 0.7 * d_count + 0.1 * dis_count - 0.5 * f_count) / total_frames * 100
+            # Score = 0.5625 * (1 - perclos_val) * 100 + 0.4375 * (1.0 * u_count + 0.9 * n_count + 0.7 * d_count + 0.1 * dis_count) / total_frames * 100
+            perclos_score = (1.0 - self.perclos_val) * 100.0
+            emotion_score = (1.0 * u_count + 0.9 * n_count + 0.7 * d_count + 0.1 * dis_count) / total_frames * 100.0
+            raw_score = 0.5625 * perclos_score + 0.4375 * emotion_score
 
             # （废除）因为存在负权重，确保分数不会掉到 0 以下，最高不超过 100
             score = max(0, min(100, int(raw_score)))

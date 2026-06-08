@@ -162,7 +162,7 @@ class AttentionAnalyzer:
             dis_count = macro_list.count("Disgusted")   #厌烦状态
             n_count = macro_list.count("Neutral")   #自然听课状态
 
-            # 新策略公式：Score = 0.5625 * (1 - perclos_val) * 100 + 0.4375 * (1.0 * u_count + 0.5 * n_count + 0.7 * d_count + 0.1 * dis_count) / total_frames * 100
+            # 新策略
             perclos_score = (1.0 - self.perclos_val) * 100.0
             emotion_score = (1.0 * u_count + 0.5 * n_count + 0.7 * d_count + 0.1 * dis_count) / total_frames * 100.0
             raw_score = 0.5625 * perclos_score + 0.4375 * emotion_score

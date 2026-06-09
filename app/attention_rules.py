@@ -170,7 +170,7 @@ class AttentionAnalyzer:
             # （更改）Score_engagement = 0.5625 * (Score_Fatigue) + 0.4375 * (1.0 * u_count + 0.5 * n_count + 0.7 * d_count + 0.1 * dis_count)
             raw_score = (1.0 * u_count + 0.9 * n_count + 0.7 * d_count + 0.1 * dis_count - 0.5 * f_count) / total_frames * 100
 
-            # （废除）因为存在负权重，确保分数不会掉到 0 以下，最高不超过 100
+
             score = max(0, min(100, int(raw_score)))
 
             status_text = f"Cognitive: {current_cognitive_state.upper()}"

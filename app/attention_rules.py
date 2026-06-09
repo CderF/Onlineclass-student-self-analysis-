@@ -167,6 +167,7 @@ class AttentionAnalyzer:
             emotion_score = (1.0 * u_count + 0.5 * n_count + 0.7 * d_count + 0.1 * dis_count) / total_frames * 100.0
             raw_score = 0.5625 * perclos_score + 0.4375 * emotion_score
 
+            # 保证分数范围在0-100之间
             score = max(0, min(100, int(raw_score)))
 
             status_text = f"Cognitive: {current_cognitive_state.upper()}"

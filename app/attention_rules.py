@@ -16,6 +16,7 @@ class AttentionAnalyzer:
         self.score_before_absent = 100
         self.last_alert_time = 0
         self.eyes_closed_start_time = None  # 用于记录连续闭眼的起始时间
+        self.perclos_val = 0.0
 
         """
             yolo类别索引映射待更改
@@ -129,13 +130,9 @@ class AttentionAnalyzer:
                 blink_count = sum(1 for item in self.perclos_buffer if item[1])
                 yawn_count = sum(1 for item in self.perclos_buffer if item[2])
 
-                # 这次计算的是整体疲劳度指数，不再只计算Perclos
-                perclos_val = (blink_count / total_p_frames) + (yawn_count / total_p_frames) * 0.2
-
-                # 如果超过疲劳阈值，直接将第五状态覆写上去！（废除）
-                # 改为（1-疲劳指数）* 系数 作为惩罚项
-                if perclos_val > 0.38:
-                    current_cognitive_state = "Fatigued"
+                # 计算疲劳度，限制在 0.0 到 1.0 之间
+                raw_perclos = (blink_count / total_p_frames) + (yawn_count / total_p_frames) * 0.2
+                self.perclos_val = min(1.0, max(0.0, raw_perclos))
 
             # 将这个最终决断的状态存入60秒的宏观窗口
             self.macro_buffer.append((now, current_cognitive_state))
@@ -164,28 +161,21 @@ class AttentionAnalyzer:
             d_count = macro_list.count("Doubt") #疑惑状态
             dis_count = macro_list.count("Disgusted")   #厌烦状态
             n_count = macro_list.count("Neutral")   #自然听课状态
-            f_count = macro_list.count("Fatigued")  # 疲劳状态不应该特别被升格出来
 
-            # （废除）动态 Score 公式 (引入 Fatigued 的 -0.5 重磅惩罚)
-            # （更改）Score_engagement = 0.5625 * (Score_Fatigue) + 0.4375 * (1.0 * u_count + 0.5 * n_count + 0.7 * d_count + 0.1 * dis_count)
-            raw_score = (1.0 * u_count + 0.9 * n_count + 0.7 * d_count + 0.1 * dis_count - 0.5 * f_count) / total_frames * 100
-
+            # 新策略
+            perclos_score = (1.0 - self.perclos_val) * 100.0
+            emotion_score = (1.0 * u_count + 0.5 * n_count + 0.7 * d_count + 0.1 * dis_count) / total_frames * 100.0
+            raw_score = 0.5625 * perclos_score + 0.4375 * emotion_score
 
             score = max(0, min(100, int(raw_score)))
 
             status_text = f"Cognitive: {current_cognitive_state.upper()}"
 
-            """
-            # 基于专注度水平的弹窗
-            if (d_count / total_frames) > 0.4 | (dis_count / total_frames) > 0.5:
-                if now - self.last_alert_time > 45:
-                    alert_data = ('doubt', 'Learning Alert', '系统检测到您可能遇到知识难点，建议做好标记或暂停回顾。')
-                    self.last_alert_time = now
-            elif (f_count / total_frames) > 0.5:  # 新增疲劳弹窗
-                if now - self.last_alert_time > 60:
+            # 警报逻辑：基于 self.perclos_val 直接触发疲劳警报
+            if self.perclos_val > 0.38:
+                if now - self.last_alert_time > 60.0:
                     alert_data = ('fatigue', 'Fatigue Alert', '系统检测到您当前较为疲劳，建议起身活动或喝口水休息一下。')
                     self.last_alert_time = now
-            """
 
         # 阶段三：空间物理规则最高优先级覆写　（有必要考虑是否有必要添加此功能）
 

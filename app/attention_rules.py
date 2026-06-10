@@ -172,7 +172,7 @@ class AttentionAnalyzer:
 
             status_text = f"Cognitive: {current_cognitive_state.upper()}"
 
-            # 警报逻辑：基于 self.perclos_val 直接触发疲劳警报
+            # 警报逻辑：基于 self.perclos_val 直接触发疲劳警报（后续需更改）
             if self.perclos_val > 0.38:
                 if now - self.last_alert_time > 60.0:
                     alert_data = ('fatigue', 'Fatigue Alert', '系统检测到您当前较为疲劳，建议起身活动或喝口水休息一下。')

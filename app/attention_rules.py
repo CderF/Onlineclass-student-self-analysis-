@@ -2,6 +2,8 @@ import time
 import numpy as np
 from collections import deque
 
+from scipy.stats import fatiguelife
+
 
 class AttentionAnalyzer:
     def __init__(self):
@@ -16,11 +18,125 @@ class AttentionAnalyzer:
         self.score_before_absent = 100
         self.last_alert_time = 0
         self.eyes_closed_start_time = None  # 用于记录连续闭眼的起始时间
-        self.perclos_val = 0.0
+        self.fatigue_val = 0.0
 
         # 多模态融合时间戳滑动窗口（Perclos、Macro）
-        self.perclos_buffer = deque()  # 8 秒疲劳特征缓冲: (now, is_blink, is_yawn)
+        self.perclos_buffer = deque()  # 8 秒疲劳特征缓冲: (now, ear, mar, delta_pitch)
         self.macro_buffer = deque()  # 60 秒宏观离散标签: (now, state_label)
+
+    def _calculate_perclos(self) -> float:
+        """计算眼睛闭合程度超过80% (EAR < 0.2) 的帧所占的百分比"""
+        valid_frames = [item for item in self.perclos_buffer if item[1] is not None]
+        if not valid_frames:
+            return 0.0
+        closed_frames = sum(1 for item in valid_frames if item[1] < 0.2)
+        return closed_frames / len(valid_frames)
+
+    def _calculate_blink_freq(self) -> float:
+        """计算眨眼频率 (EAR < 0.2 持续 200 毫秒视为一次眨眼，频率为特定动作帧数占所有帧的百分比)"""
+        if not self.perclos_buffer:
+            return 0.0
+
+        runs = []
+        current_run = []
+        for item in self.perclos_buffer:
+            t, ear, mar, dp = item
+            if ear is not None and ear < 0.2:
+                if current_run:
+                    if t - current_run[-1][0] > 0.25:  # 250ms gap max within a run
+                        runs.append(current_run)
+                        current_run = []
+                current_run.append((t, ear))
+            else:
+                if current_run:
+                    runs.append(current_run)
+                    current_run = []
+        if current_run:
+            runs.append(current_run)
+
+        blink_frames_count = 0
+        for run in runs:
+            duration = run[-1][0] - run[0][0]
+            if duration >= 0.2:  # >= 200 ms
+                blink_frames_count += len(run)
+
+        return blink_frames_count / len(self.perclos_buffer)
+
+    def _calculate_yawn_freq(self) -> float:
+        """计算打哈欠频率 (MAR > 0.65 持续 2 秒视为打了一次哈欠，频率为特定动作帧数占所有帧的百分比)"""
+        if not self.perclos_buffer:
+            return 0.0
+
+        runs = []
+        current_run = []
+        for item in self.perclos_buffer:
+            t, ear, mar, dp = item
+            if mar is not None and mar > 0.65:
+                if current_run:
+                    if t - current_run[-1][0] > 0.25:  # 250ms gap max within a run
+                        runs.append(current_run)
+                        current_run = []
+                current_run.append((t, mar))
+            else:
+                if current_run:
+                    runs.append(current_run)
+                    current_run = []
+        if current_run:
+            runs.append(current_run)
+
+        yawn_frames_count = 0
+        for run in runs:
+            duration = run[-1][0] - run[0][0]
+            if duration >= 2.0:  # >= 2.0 seconds
+                yawn_frames_count += len(run)
+
+        return yawn_frames_count / len(self.perclos_buffer)
+
+    def _calculate_nodding_freq(self) -> float:
+        """计算困倦性点头频率 (每次低头 [delta_pitch < -15] 的间隔不超过 1.5 秒视为困倦性点头)"""
+        if not self.perclos_buffer:
+            return 0.0
+
+        runs = []
+        current_run = []
+        for item in self.perclos_buffer:
+            t, ear, mar, dp = item
+            if dp is not None and dp < self.PITCH_DOWN_THRESH:
+                if current_run:
+                    if t - current_run[-1][0] > 0.25:  # 250ms gap max within the same head down
+                        runs.append(current_run)
+                        current_run = []
+                current_run.append((t, dp))
+            else:
+                if current_run:
+                    runs.append(current_run)
+                    current_run = []
+        if current_run:
+            runs.append(current_run)
+
+        num_runs = len(runs)
+        if num_runs == 0:
+            return 0.0
+
+        is_nodding_run = [False] * num_runs
+        for i in range(num_runs):
+            if i > 0:
+                gap_prev = runs[i][0][0] - runs[i-1][-1][0]
+                if gap_prev <= 1.5:
+                    is_nodding_run[i] = True
+                    is_nodding_run[i-1] = True
+            if i < num_runs - 1:
+                gap_next = runs[i+1][0][0] - runs[i][-1][0]
+                if gap_next <= 1.5:
+                    is_nodding_run[i] = True
+                    is_nodding_run[i+1] = True
+
+        nodding_frames_count = 0
+        for i in range(num_runs):
+            if is_nodding_run[i]:
+                nodding_frames_count += len(runs[i])
+
+        return nodding_frames_count / len(self.perclos_buffer)
 
     def process_frame(self, all_probs, ear, mar, delta_pitch, delta_yaw):
         """
@@ -35,11 +151,11 @@ class AttentionAnalyzer:
         current_cognitive_state = "Neutral"  # 默认状态
 
         # 参与度标签前向拦截 + 疲劳惩罚
-        if has_face and all_probs is not None:
+        if has_face and all_probs is not None and len(all_probs) == 7:
 
             # 前向特征拦截：防止因为打哈欠或是闭眼了导致yolo误判表情，同时将误判的标签概率分配给Neutral
             is_yawn = (mar > 0.65)
-            is_blink_frame = (ear < 0.15)
+            is_blink_frame = (ear < 0.2)
             # 连续闭眼 2 秒计时器
             if is_blink_frame:
                 if self.eyes_closed_start_time is None:
@@ -60,30 +176,31 @@ class AttentionAnalyzer:
                 probs_clean['Neutral'] = 1.0
 
             # 存入带时间戳的 Perclos 疲劳缓冲
-            self.perclos_buffer.append((now, is_blink_frame, is_yawn))
+            self.perclos_buffer.append((now, ear, mar, delta_pitch))
 
             # 核心：滑动窗口剔除老数据
-            while self.perclos_buffer and (now - self.perclos_buffer[0][0]) > 8.0:
+            while self.perclos_buffer and (now - self.perclos_buffer[0][0]) > 10.0:
                 self.perclos_buffer.popleft()
 
             # 直接取当前帧概率最大值作为基础离散状态
             current_cognitive_state = max(probs_clean, key=probs_clean.get)
 
-            # 计算 8 秒 Perclos 疲劳度
+            # 计算疲劳度(Fatigue Index)
             """
                 关于疲劳度Fatigue的计算，采用Perclos+眨眼频率+打哈欠频率+点头频率（对应权重分别为0.1，0.4，0.3，0.2）
                 参考文献：
                 Multimodal Detection of Emotional and Cognitive States in E-Learning Through Deep Fusion of Visual and Textual Data with NLP 
             """
 
-            if len(self.perclos_buffer) > 0 and (now - self.perclos_buffer[0][0]) >= 7.5:   #冷启动保护，先累计满7.5秒再计算
-                total_p_frames = len(self.perclos_buffer)
-                blink_count = sum(1 for item in self.perclos_buffer if item[1])
-                yawn_count = sum(1 for item in self.perclos_buffer if item[2])
+            if len(self.perclos_buffer) > 0 and (now - self.perclos_buffer[0][0]) >= 9.5: #冷启动保护，先累计满9.5秒再计算
+                perclos = self._calculate_perclos()
+                blink_freq = self._calculate_blink_freq()
+                yawn_freq = self._calculate_yawn_freq()
+                nodding_freq = self._calculate_nodding_freq()
 
-                # 计算疲劳度，限制在 0.0 到 0.1 之间
-                raw_perclos = (blink_count / total_p_frames) + (yawn_count / total_p_frames) * 0.2
-                self.perclos_val = min(1.0, max(0.0, raw_perclos))
+                # 疲劳指数 = 0.35 * perclos + 0.25 * blink_freq + 0.2 * nodding_freq + 0.2 * yawn_freq
+                raw_fatigue = 0.35 * perclos + 0.25 * blink_freq + 0.2 * nodding_freq + 0.2 * yawn_freq
+                self.fatigue_val = min(1.0, max(0.0, raw_fatigue))
 
             # 将这个最终决断的状态存入60秒的宏观窗口
             self.macro_buffer.append((now, current_cognitive_state))
@@ -114,9 +231,9 @@ class AttentionAnalyzer:
             n_count = macro_list.count("Neutral")   #自然听课状态
 
             # Score = 0.5625 * (1 - perclos_val) * 100 + 0.4375 * (1.0 * u_count + 0.9 * n_count + 0.7 * d_count + 0.1 * dis_count) / total_frames * 100
-            perclos_score = (1.0 - self.perclos_val) * 100.0
+            fatigue_score = (1.0 - self.fatigue_val) * 100.0
             emotion_score = (1.0 * u_count + 0.9 * n_count + 0.7 * d_count + 0.1 * dis_count) / total_frames * 100.0
-            raw_score = 0.5625 * perclos_score + 0.4375 * emotion_score
+            raw_score = 0.5625 * fatigue_score + 0.4375 * emotion_score
 
             # （废除）因为存在负权重，确保分数不会掉到 0 以下，最高不超过 100
             score = max(0, min(100, int(raw_score)))

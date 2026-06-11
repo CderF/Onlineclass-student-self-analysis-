@@ -1,1 +1,10 @@
-.ideal/
+# 忽略 Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 忽略权重文件 (如果不想跟踪这些大文件)
+weights/*.pt
+
+/.idea/

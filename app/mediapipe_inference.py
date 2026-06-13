@@ -35,6 +35,10 @@ class FaceMeshInference:
             (150.0, -150.0, -125.0)  # 291: 右嘴角
         ], dtype=np.float64)
 
+        # 边界框平滑状态
+        self.smoothed_bbox = None
+        self.bbox_smoothing_factor = 0.4  # EMA 平滑系数，0~1之间。越小越平滑，越大响应越快
+
     def _euclidean_distance(self, p1, p2):
         return math.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
 
@@ -174,6 +178,24 @@ class FaceMeshInference:
             x_max = min(img_w, x_max + pad_w)
             y_max = min(img_h, y_max + pad_h)
 
-            bbox = (x_min, y_min, x_max, y_max)
+            curr_bbox = np.array([x_min, y_min, x_max, y_max], dtype=np.float32)
+
+            if self.smoothed_bbox is None:
+                self.smoothed_bbox = curr_bbox
+            else:
+                curr_center = np.array([(x_min + x_max) / 2, (y_min + y_max) / 2])
+                prev_center = np.array([(self.smoothed_bbox[0] + self.smoothed_bbox[2]) / 2, 
+                                        (self.smoothed_bbox[1] + self.smoothed_bbox[3]) / 2])
+                
+                # 如果人脸位置发生明显跳变（例如快速移动），则立即跟随重置，不进行平滑
+                if np.linalg.norm(curr_center - prev_center) > img_w * 0.2:
+                    self.smoothed_bbox = curr_bbox
+                else:
+                    self.smoothed_bbox = self.bbox_smoothing_factor * curr_bbox + (1.0 - self.bbox_smoothing_factor) * self.smoothed_bbox
+
+            bbox = tuple(self.smoothed_bbox.astype(int))
+
+        else:
+            self.smoothed_bbox = None
 
         return ear, mar, pitch, yaw, roll, bbox, frame

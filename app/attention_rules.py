@@ -20,9 +20,8 @@ class AttentionAnalyzer:
 
         """
             yolo类别索引映射待更改
-            
         """
-        # 多模态融合时间戳滑动窗口（Yolo、Perclos）
+        # 多模态融合时间戳滑动窗口（Yolo、MediaPipe疲劳检测）
         self.micro_buffer = deque()  # 3 秒微观表情概率: (now, all_probs_clean) 需更改
         self.perclos_buffer = deque()  # 10 秒疲劳特征缓冲: (now, ear, mar, delta_pitch)
         self.macro_buffer = deque()  # 60 秒宏观离散标签: (now, state_label)

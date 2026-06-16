@@ -180,7 +180,7 @@ class AttentionAnalyzer:
             # 如果正在打哈欠或闭眼，强行剥夺 Happy 和 Surprise 的概率，防止 YOLO 误判
             if is_yawn or is_blink:
                 probs_clean = np.zeros(7) # 7个概率全变
-                probs_clean[self.EMOTION_IDX['Neutral']] = 1.0  # 唯独 Neutral 设为 1.0
+                probs_clean[self.EMOTION_IDX['Neutral']] = 1.0
 
             # 存入带时间戳的数据包裹
             self.micro_buffer.append((now, probs_clean))

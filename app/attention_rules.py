@@ -31,7 +31,8 @@ class AttentionAnalyzer:
             'Anger': 0, 'Disgust': 1, 'Fear': 2, 'Happy': 3,
             'Neutral': 4, 'Sad': 5, 'Surprise': 6
         }
-
+    # 虽然利用MediaPipe进行了眨眼 张嘴的检测但是正确率仍不可忽视 需要通过实验来验证
+    # 两个不同的人 分别戴眼镜和不戴眼镜 共四种情况 进行眨眼 闭眼 张嘴模拟说话 张嘴模拟打哈欠
     def _calculate_perclos(self) -> float:
         """计算眼睛闭合程度超过80% (EAR < 0.2) 的帧所占的百分比"""
         valid_frames = [item for item in self.perclos_buffer if item[1] is not None]

@@ -42,7 +42,7 @@ class AttentionAnalyzer:
         return closed_frames / len(valid_frames)
 
     def _calculate_blink_freq(self) -> float:
-        """计算眨眼频率 (EAR < 0.2 持续 200 毫秒视为一次眨眼，频率为特定动作帧数占所有帧的百分比) （实验判断是否增加上限）"""
+        """计算眨眼频率 (EAR < 0.2 持续 200 毫秒视为一次眨眼，频率为特定动作帧数占所有帧的百分比) （实验判断）"""
         if not self.perclos_buffer:
             return 0.0
 

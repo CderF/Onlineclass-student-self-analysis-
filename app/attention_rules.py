@@ -19,7 +19,7 @@ class AttentionAnalyzer:
         self.perclos_val = 0.0
 
         """
-            yolo类别索引映射待更改
+            yolo类别索引待更改
         """
         # 多模态融合时间戳滑动窗口（Yolo、MediaPipe疲劳检测）
         self.micro_buffer = deque()  # 3 秒微观表情概率: (now, all_probs_clean) 需更改

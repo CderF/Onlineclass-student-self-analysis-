@@ -70,3 +70,17 @@ python main.py
 - **Do NOT** block the main thread.
 - **Do NOT** hardcode absolute file paths. Use `os.path` or `pathlib`.
 - **Do NOT** commit large weight files (`.pt`, `.onnx`). Add them to `.gitignore`.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for CderF/Onlineclass-student-self-analysis- (via `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

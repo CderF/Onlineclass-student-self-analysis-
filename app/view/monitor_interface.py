@@ -117,7 +117,7 @@ class MonitorInterface(QWidget):
         # ---------------------------------
         # 红色需先于绿色判断："Focus: DISTRACTED" 同时包含 "Focus"
         elif ("PHONE" in status_text or "HEAD DOWN" in status_text or "ABSENT" in status_text
-              or "DISTRACTED" in status_text):
+              or "DISTRACTED" in status_text or "ABNORMAL" in status_text):
             self.scoreLabel.setStyleSheet("color: #EF4444; font-weight: bold;")  # 红色 (分心/离线)
         elif "Focus" in status_text or "Active" in status_text:
             self.scoreLabel.setStyleSheet("color: #10B981; font-weight: bold;")  # 绿色 (专注)

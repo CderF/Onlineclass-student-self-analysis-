@@ -6,6 +6,8 @@ __pycache__/
 
 # 忽略权重文件 (如果不想跟踪这些大文件)
 weights/*.pt
+weights/*.dat
+weights/*.onnx
 
 .idea/
 

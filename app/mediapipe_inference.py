@@ -130,6 +130,9 @@ class FaceMeshInference:
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self.face_mesh.process(rgb_frame)
 
+        # 网格只画在显示副本上，原始 frame 保持干净，供 YOLO 裁切使用
+        display_frame = frame.copy()
+
         ear, mar = None, None
         pitch, yaw, roll = None, None, None
         bbox = None  # 用于存放人脸边界框 (x_min, y_min, x_max, y_max)
@@ -139,14 +142,14 @@ class FaceMeshInference:
 
             if draw_mesh:
                 self.mp_drawing.draw_landmarks(
-                    image=frame,
+                    image=display_frame,
                     landmark_list=landmarks,
                     connections=self.mp_face_mesh.FACEMESH_TESSELATION,
                     landmark_drawing_spec=None,
                     connection_drawing_spec=self.mp_drawing_styles.get_default_face_mesh_tesselation_style()
                 )
                 self.mp_drawing.draw_landmarks(
-                    image=frame,
+                    image=display_frame,
                     landmark_list=landmarks,
                     connections=self.mp_face_mesh.FACEMESH_CONTOURS,
                     landmark_drawing_spec=None,
@@ -169,14 +172,17 @@ class FaceMeshInference:
             x_min, x_max = int(min(x_coords) * img_w), int(max(x_coords) * img_w)
             y_min, y_max = int(min(y_coords) * img_h), int(max(y_coords) * img_h)
 
-            # 增加 20% 的外扩 Padding，确保包含完整的面部特征
-            pad_w = int((x_max - x_min) * 0.2)
-            pad_h = int((y_max - y_min) * 0.2)
+            # 以长边为基准四周各外扩 20% 构成正方形框：YOLO 分类预处理为短边缩放+中心裁剪，非正方形输入会丢失上下区域
+            cx = (x_min + x_max) / 2
+            cy = (y_min + y_max) / 2
+            side = max(x_max - x_min, y_max - y_min) * 1.4
+            side = min(side, img_w, img_h)
 
-            x_min = max(0, x_min - pad_w)
-            y_min = max(0, y_min - pad_h)
-            x_max = min(img_w, x_max + pad_w)
-            y_max = min(img_h, y_max + pad_h)
+            # 靠近画面边缘时平移正方形而非截断，保持宽高比
+            x_min = min(max(0.0, cx - side / 2), img_w - side)
+            y_min = min(max(0.0, cy - side / 2), img_h - side)
+            x_max = x_min + side
+            y_max = y_min + side
 
             curr_bbox = np.array([x_min, y_min, x_max, y_max], dtype=np.float32)
 
@@ -198,4 +204,4 @@ class FaceMeshInference:
         else:
             self.smoothed_bbox = None
 
-        return ear, mar, pitch, yaw, roll, bbox, frame
+        return ear, mar, pitch, yaw, roll, bbox, display_frame

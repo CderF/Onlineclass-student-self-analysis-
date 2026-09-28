@@ -23,7 +23,7 @@ class AttentionAnalyzer:
         """
         # 多模态融合时间戳滑动窗口（Yolo、MediaPipe疲劳检测）
         self.micro_buffer = deque()  # 3 秒微观表情概率: (now, all_probs_clean) 需更改
-        self.perclos_buffer = deque()  # 10 秒疲劳特征缓冲: (now, ear, mar, delta_pitch)
+        self.perclos_buffer = deque()  # 8 秒疲劳特征缓冲: (now, ear, mar, delta_pitch)
         self.macro_buffer = deque()  # 60 秒宏观离散标签: (now, state_label)
 
         # YOLO 类别索引映射
@@ -190,7 +190,7 @@ class AttentionAnalyzer:
             # 核心：剔除超过指定时间的老数据
             while self.micro_buffer and (now - self.micro_buffer[0][0]) > 3.0:
                 self.micro_buffer.popleft()
-            while self.perclos_buffer and (now - self.perclos_buffer[0][0]) > 10.0:
+            while self.perclos_buffer and (now - self.perclos_buffer[0][0]) > 8.0:
                 self.perclos_buffer.popleft()
 
             """
@@ -235,7 +235,7 @@ class AttentionAnalyzer:
                 最终实现：疲劳指数=0.35*perclos+0.25*眨眼频率+0.2*打哈欠频率+0.2*困倦性点头频率
             """
 
-            if len(self.perclos_buffer) > 0 and (now - self.perclos_buffer[0][0]) >= 9.5:   #冷启动保护，先累计满9.5秒再计算
+            if len(self.perclos_buffer) > 0 and (now - self.perclos_buffer[0][0]) >= 7.5:   #冷启动保护，先累计满7.5秒再计算
                 perclos = self._calculate_perclos()
                 blink_freq = self._calculate_blink_freq()
                 yawn_freq = self._calculate_yawn_freq()

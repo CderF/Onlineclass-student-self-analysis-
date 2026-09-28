@@ -178,16 +178,22 @@ R_{\text{Neutral}}    &= 1.0 \cdot p_{\text{neutral}}
 ### 2. 疲劳度（Fatigue Index）计算
 根据教育生理学模型，综合 8 秒滑动窗口内的生物特征：
 
-$$\text{Fatigue} = 0.1 \cdot \text{PERCLOS} + 0.4 \cdot \text{BlinkFreq} + 0.3 \cdot \text{YawnFreq} + 0.2 \cdot \text{NodFreq}$$
+$$\text{Fatigue} = 0.35 \cdot \text{PERCLOS} + 0.25 \cdot \text{BlinkFreq} + 0.2 \cdot \text{YawnFreq} + 0.2 \cdot \text{NodFreq}$$
 
-当综合评分超过 $0.38$ 阈值时，认知状态将被强行覆写为 `Fatigued`。
+结果截断至 $[0, 1]$。当疲劳度超过 $0.38$ 阈值，且距上一次任意警报已超过 60 秒时，触发疲劳警报（认知状态本身不被改写）。
 
 ### 3. 基础专注度得分 (Macro Score)
-在 60 秒宏观统计时间窗内，各类状态占比对应的基准得分公式为：
+参考 El Maazouzi 等人的评价函数，剔除文本模态后将疲劳项与表情项的权重重新归一化（$\alpha = \frac{0.45}{0.45+0.35} = 0.5625$，$\beta = \frac{0.35}{0.45+0.35} = 0.4375$）：
 
-$$\text{Score}_{\text{macro}} = \frac{1.0 \cdot N_{\text{Understand}} + 0.9 \cdot N_{\text{Neutral}} + 0.7 \cdot N_{\text{Doubt}} + 0.1 \cdot N_{\text{Disgusted}} - 0.5 \cdot N_{\text{Fatigued}}}{N_{\text{total}}} \times 100$$
+$$\text{Score}_{\text{macro}} = 0.5625 \cdot \text{Score}_{\text{fatigue}} + 0.4375 \cdot \text{Score}_{\text{emotion}}$$
 
-其中 $N_{\text{Understand}}, N_{\text{Neutral}}, \ldots, N_{\text{total}}$ 分别表示各状态在窗口内的帧数计数和总帧数。
+其中疲劳项与表情项分别为：
+
+$$\text{Score}_{\text{fatigue}} = (1 - \text{Fatigue}) \times 100$$
+
+$$\text{Score}_{\text{emotion}} = \frac{1.0 \cdot N_{\text{Understand}} + 0.5 \cdot N_{\text{Neutral}} + 0.7 \cdot N_{\text{Doubt}} + 0.1 \cdot N_{\text{Disgusted}}}{N_{\text{total}}} \times 100$$
+
+$N_{\text{Understand}}, N_{\text{Neutral}}, \ldots, N_{\text{total}}$ 分别表示各认知状态在 60 秒宏观窗口内的帧数计数和总帧数；最终得分取整并截断至 $[0, 100]$。
 
 ### 4. 离席三次方衰减公式
 当面部完全丢失（AWAY 状态），且非记笔记惯性期时，得分按时间 $t$ 采用三次方曲线进行非线性平滑衰减：

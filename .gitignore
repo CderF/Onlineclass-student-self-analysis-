@@ -8,3 +8,10 @@ __pycache__/
 weights/*.pt
 
 .idea/
+
+# 忽略环境变量文件与虚拟环境
+.env
+.env.*
+.venv/
+venv/
+env/

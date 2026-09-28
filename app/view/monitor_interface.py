@@ -115,10 +115,12 @@ class MonitorInterface(QWidget):
         if "CALIBRATING" in status_text:
             self.scoreLabel.setStyleSheet("color: #3B82F6; font-weight: bold;")  # 蓝色
         # ---------------------------------
+        # 红色需先于绿色判断："Focus: DISTRACTED" 同时包含 "Focus"
+        elif ("PHONE" in status_text or "HEAD DOWN" in status_text or "ABSENT" in status_text
+              or "DISTRACTED" in status_text):
+            self.scoreLabel.setStyleSheet("color: #EF4444; font-weight: bold;")  # 红色 (分心/离线)
         elif "Focus" in status_text or "Active" in status_text:
             self.scoreLabel.setStyleSheet("color: #10B981; font-weight: bold;")  # 绿色 (专注)
-        elif "PHONE" in status_text or "HEAD DOWN" in status_text or "ABSENT" in status_text:
-            self.scoreLabel.setStyleSheet("color: #EF4444; font-weight: bold;")  # 红色 (分心/离线)
         else:
             self.scoreLabel.setStyleSheet("color: #F59E0B; font-weight: bold;")  # 橙色 (监控中/未知)
     def show_async_alert(self, title: str, message: str):

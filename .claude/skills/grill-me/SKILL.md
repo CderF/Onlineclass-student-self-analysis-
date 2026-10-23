@@ -1,13 +1,13 @@
 ---
 name: grill-me
-description: 反复追问用户,用"已知的已知 / 未知的已知 / 已知的未知 / 未知的未知"四象限框架澄清并钉死项目真实需求,直到达成共识。当用户主动说 grill me、需求模糊、或开始新项目想先把需求问清楚时使用。仅在用户明确要求时使用。结束后落盘 proposal.md,并可选沉淀 CONTEXT.md 术语与 ADR。与用户的交互按其使用的语言作答。
+description: 反复追问用户,用"已知的已知 / 未知的已知 / 已知的未知 / 未知的未知"四象限框架澄清并钉死项目真实需求,直到达成共识。当用户主动说 grill me、需求模糊、或开始新项目想先把需求问清楚时使用。仅在用户明确要求时使用。结束后落盘 proposal.md,并可选沉淀 GLOSSARY.md 术语与 ADR。与用户的交互按其使用的语言作答。
 disable-model-invocation: true
 argument-hint: "[项目/计划的描述,可留空;也可带输出路径,如 \"A 项目 --out docs/proposal.md\"]"
 ---
 
 # Interaction language
 
-Respond to the user in **whatever language they use** — if they write in Simplified Chinese, reply in Simplified Chinese; if they switch, match them. Every user-facing word this skill produces — questions, confirmations, summaries, and the generated documents (`proposal.md`, `CONTEXT.md`, ADR files) — follows the user's language. Only this instruction document itself is in English.
+Respond to the user in **whatever language they use** — if they write in Simplified Chinese, reply in Simplified Chinese; if they switch, match them. Every user-facing word this skill produces — questions, confirmations, summaries, and the generated documents (`proposal.md`, `GLOSSARY.md`, ADR files) — follows the user's language. Only this instruction document itself is in English.
 
 # Mission
 
@@ -77,18 +77,18 @@ After the user confirms the summary:
 Runs after proposal.md is written: distill the domain vocabulary and key decisions surfaced in this interview into the project for reuse by future sessions. **Only write confirmed content; never force terms into existence.**
 
 1. **Determine the context structure**:
-   - Root `CONTEXT-MAP.md` exists → multi-context repo; route this content to the matching subdirectory's `CONTEXT.md` per the map; if unsure, infer from the map, and ask if still uncertain.
-   - Otherwise → single context; use the root `CONTEXT.md`. If neither file exists → create the root lazily (only once a first term exists). Do NOT auto-create `CONTEXT-MAP.md` in this phase: it belongs only in repos that genuinely have multiple contexts — propose it to the user, never generate it unilaterally.
-   - User agrees to multi-context → first confirm three things with the user: how the context boundaries are cut, the naming, and how they relate; only then generate the root `CONTEXT-MAP.md` and each subdirectory's `CONTEXT.md`. Never set boundaries on your own.
+   - Root `GLOSSARY-MAP.md` exists → multi-context repo; route this content to the matching subdirectory's `GLOSSARY.md` per the map; if unsure, infer from the map, and ask if still uncertain.
+   - Otherwise → single context; use the root `GLOSSARY.md`. If neither file exists → create the root lazily (only once a first term exists). Do NOT auto-create `GLOSSARY-MAP.md` in this phase: it belongs only in repos that genuinely have multiple contexts — propose it to the user, never generate it unilaterally.
+   - User agrees to multi-context → first confirm three things with the user: how the context boundaries are cut, the naming, and how they relate; only then generate the root `GLOSSARY-MAP.md` and each subdirectory's `GLOSSARY.md`. Never set boundaries on your own.
 2. **Extract candidate terms** (from this interview):
    - Only project-specific concepts qualify; general programming concepts (timeout, error type, utility pattern, etc.) don't.
    - Format each term: **{Term}**: {1–2 sentence definition, what it IS not what it does}; _Avoid_: {rejected synonyms}.
    - Show the candidate list to the user first; write only what they confirm. On term conflicts, ask on the spot — don't decide for them.
-3. **Increment, don't overwrite**: if `CONTEXT.md` exists, read it fully and only add/amend the terms relevant to this interview; keep existing content.
+3. **Increment, don't overwrite**: if `GLOSSARY.md` exists, read it fully and only add/amend the terms relevant to this interview; keep existing content.
 4. **Write ADRs on demand** (only when all three hold: hard to reverse + surprising without context + a real trade-off):
    - Write `docs/adr/<highest-number+1>-<slug>.md`, 1–3 sentences covering context, decision, and reason; create `docs/adr/` lazily if missing.
 5. **Cross-check against code**: if the user's description of the implementation contradicts the code, raise it on the spot; write nothing until the contradiction is resolved.
-6. Close with one sentence reporting: which `CONTEXT.md` was updated, which ADR was written, or "no domain terms / no ADRs this time".
+6. Close with one sentence reporting: which `GLOSSARY.md` was updated, which ADR was written, or "no domain terms / no ADRs this time".
 
 # Stop conditions
 - User says stop → stop immediately, output the current summary (already-written documents stay).

@@ -15,11 +15,11 @@ Project Type: Desktop GUI Application (PyQt5 + qfluentwidgets + YOLO/OpenCV).
 ## 2. Build & Run Commands
 
 ### Environment Setup
-No lockfiles present. Install core dependencies manually:
+Top-level dependencies are pinned in `requirements.txt` (Python 3.10):
 ```bash
-pip install PyQt5 qfluentwidgets opencv-python numpy torch torchvision ultralytics
+pip install -r requirements.txt
 ```
-*Note: PyTorch/YOLOv5 dependencies may vary based on hardware (CUDA).*
+*Note: PyTorch dependencies may vary based on hardware (CUDA). The `mediapipe` line for platforms other than Apple Silicon has not been verified.*
 
 ### Execution
 Run the application:
@@ -29,7 +29,7 @@ python main.py
 *Note: Ensure a webcam is available or modify `camera_thread.py` to use a video file.*
 
 ### Testing & Linting
-**Status**: No formal testing or linting framework is currently configured.
+**Status**: `pytest` tests live in `tests/`; run `python -m pytest` from the repo root. No linter is configured.
 - **Syntax Check**: `python -m py_compile main.py`
 - **Recommended**: Use `flake8` or `ruff` for ad-hoc style checks if modifying core logic.
 

@@ -1,7 +1,18 @@
-PyQt5>=5.15
-opencv-python>=4.5.5.64
-numpy>=1.21.0
-torch>=1.13.0
-torchvision>=0.14.0
-ultralytics>=8.0.0
-mediapipe>=0.8.9
+# 顶层依赖，版本取自开发机（Apple Silicon Mac，Python 3.10，conda 环境 demo）实际运行的版本
+PyQt5==5.15.11
+PyQt5-Qt5==5.15.17
+PyQt-Fluent-Widgets==1.11.1
+# 报告页（QWebEngineView + 本地 ECharts）；PyQtWebEngine-Qt5 必须与 PyQt5-Qt5 版本一致
+PyQtWebEngine==5.15.7
+PyQtWebEngine-Qt5==5.15.17
+opencv-python==4.13.0.92
+numpy==2.2.6
+torch==2.10.0
+torchvision==0.25.0
+ultralytics==8.4.19
+# 代码使用旧版 mp.solutions.face_mesh 接口。PyPI 已不再提供官方 mediapipe 0.9.x，
+# Apple Silicon Mac 使用社区版 mediapipe-silicon；其他平台使用官方 0.10.21（未在其他平台上验证）
+mediapipe-silicon==0.9.2.1; sys_platform == "darwin" and platform_machine == "arm64"
+mediapipe==0.10.21; sys_platform != "darwin" or platform_machine != "arm64"
+# 测试
+pytest==9.1.1

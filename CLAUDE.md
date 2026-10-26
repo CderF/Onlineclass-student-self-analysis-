@@ -40,6 +40,13 @@ Research prototype for a paper (student self-analysis of engagement in online cl
 5. Results reach the UI only via the `pyqtSignal`s on `CameraThread`: pixmap, score, `(status_text, tone)`, alert.
 6. **Pause/resume** (`CameraThread.pause` / `resume`): pausing releases the camera. Resuming reopens it, keeps the calibration baseline (`is_calibrated`), and replaces the `AttentionAnalyzer`, so all windows and timers start empty.
 
+## Session recording (`docs/adr/0002-session-storage-schema.md`)
+
+- `app/session_store.py` holds the schema, `connect()`, and the session status helpers. The DB is `data/self_analysis.db` under the repo root (gitignored). `main.py` calls `mark_interrupted_sessions` on startup.
+- `app/session_recorder.py`: `SessionRecorder` takes one `AnalysisResult` per frame and writes one `samples` row per second of the **listening timeline** (`t`; pauses excluded, calibration excluded). It also writes `events` (frame-precise spatial-state intervals and alerts) and `pauses`. It commits once per completed second.
+- Create one `SessionRecorder` per capture segment, inside `CameraThread.run()`: sqlite connections are thread-bound. On `pause(wall)`, it records a pause row. On the next construction it resumes from the next whole second after the pause.
+- Spatial-state codes and cognitive-state labels are persisted. Renaming them requires a data migration.
+
 ## Cross-file couplings to watch
 
 - **Class order**: `AttentionAnalyzer.EMOTION_IDX` hardcodes the 7-class order of the current `best.pt` (Anger, Disgust, Fear, Happy, Neutral, Sad, Surprise). Expression processing is gated on `len(all_probs) == 7`. The paper's planned model is a transfer-learned **4-class** model (Understand/Doubt/Neutral/Disgust). Swapping it in would silently skip all expression logic until the 7→4 mapping in `attention_rules.py` is replaced.

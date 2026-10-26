@@ -8,6 +8,7 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 # Import our custom interfaces
+from app import session_store
 from app.view.monitor_interface import MonitorInterface
 from app.view.report_interface import ReportInterface
 
@@ -86,6 +87,16 @@ if __name__ == "__main__":
     # 界面为日语：PingFang SC 会把日语汉字显示成中文字形，改用 Hiragino Sans
     app.setFont(QFont("Hiragino Sans", 10))
     setFontFamilies(["Hiragino Sans", "Segoe UI"])  # qfluentwidgets 组件不跟随 app 字体，需单独设置
+
+    # 上次运行崩溃遗留的课程记录标为「未正常结束」
+    try:
+        conn = session_store.connect()
+        count = session_store.mark_interrupted_sessions(conn)
+        conn.close()
+        if count:
+            print(f"⚠️ 已将 {count} 条未正常结束的课程记录标记为 interrupted")
+    except Exception as e:
+        print(f"❌ 打开课程记录数据库失败: {e}")
 
     # 2. Create and show window
     w = MainWindow()

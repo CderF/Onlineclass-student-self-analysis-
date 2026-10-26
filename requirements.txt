@@ -6,6 +6,8 @@ PyQt-Fluent-Widgets==1.11.1
 PyQtWebEngine==5.15.7
 PyQtWebEngine-Qt5==5.15.17
 opencv-python==4.13.0.92
+# ultralytics 依赖 opencv-python，mediapipe 依赖 opencv-contrib-python，两者共用 cv2 目录，必须锁定同一版本
+opencv-contrib-python==4.13.0.92
 numpy==2.2.6
 torch==2.10.0
 torchvision==0.25.0

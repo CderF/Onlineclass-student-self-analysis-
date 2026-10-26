@@ -47,26 +47,26 @@ class ReportInterface(ScrollArea):
         
         # --- UI Components ---
         
-        self.titleLabel = TitleLabel("Session Analysis", self.view)
-        self.subtitleLabel = BodyLabel("Review attention metrics and performance history.", self.view)
+        self.titleLabel = TitleLabel("学習分析", self.view)
+        self.subtitleLabel = BodyLabel("エンゲージメントの推移と学習履歴を振り返ります。", self.view)
         
         # 1. Summary Cards
-        self.cardTotalTime = StatCard(FIF.HISTORY, "Total Focus Time", "0h 00m", self.view)
-        self.cardAvgScore = StatCard(FIF.HEART, "Avg Attention Score", "0%", self.view)
-        self.cardDistractions = StatCard(FIF.REMOVE, "Distraction Events", "0", self.view)
-        self.cardPeakTime = StatCard(FIF.HIGHTLIGHT, "Peak Focus Hour", "--:--", self.view)
+        self.cardTotalTime = StatCard(FIF.HISTORY, "合計学習時間", "0時間00分", self.view)
+        self.cardAvgScore = StatCard(FIF.HEART, "平均エンゲージメント", "0", self.view)
+        self.cardDistractions = StatCard(FIF.REMOVE, "注意散漫の回数", "0", self.view)
+        self.cardPeakTime = StatCard(FIF.HIGHTLIGHT, "最も集中した時間帯", "--:--", self.view)
 
         # 2. Chart Placeholder
         # In a real app, you would embed a Matplotlib canvas or PyQtGraph widget here.
         self.chartContainer = CardWidget(self.view)
         self.chartLayout = QVBoxLayout(self.chartContainer)
-        self.chartTitle = SubtitleLabel("Attention Over Time", self.chartContainer)
+        self.chartTitle = SubtitleLabel("エンゲージメントの推移", self.chartContainer)
         
         # Placeholder frame for the chart
         self.chartFrame = QFrame(self.chartContainer)
         self.chartFrame.setStyleSheet("background-color: rgba(0, 0, 0, 0.05); border-radius: 8px; border: 1px dashed #808080;")
         self.chartFrame.setMinimumHeight(400)
-        self.chartLabel = QLabel("Chart Visualization Placeholder (Matplotlib / PyQtGraph)", self.chartFrame)
+        self.chartLabel = QLabel("グラフ表示エリア（準備中）", self.chartFrame)
         self.chartLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         chartFrameLayout = QVBoxLayout(self.chartFrame)

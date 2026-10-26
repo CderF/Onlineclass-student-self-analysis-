@@ -1,6 +1,29 @@
 import time
-import numpy as np
 from collections import deque
+from dataclasses import dataclass
+from typing import Optional, Tuple
+
+import numpy as np
+
+
+@dataclass
+class AnalysisResult:
+    """单帧分析结果。界面与记录模块都从这里取数据，不要解析 status_text。"""
+    score: int  # 参与度分数 0-100
+    status_text: str  # 仅用于界面显示（日语），颜色由 spatial_state 决定，不要解析文字
+    alert: Optional[Tuple[str, str, str]]  # (类型, 标题, 内容)，无警报时为 None
+    has_face: bool
+    cognitive_state: Optional[str]  # Understand / Doubt / Disgust / Neutral；本帧无表情结果时为 None
+    fatigue_index: float  # 疲劳指数 0-1
+    spatial_state: str  # normal / head_down / taking_notes / distracted / hidden_notes / hidden_abnormal / away / absent
+    delta_pitch: Optional[float]
+    delta_yaw: Optional[float]
+
+
+# 认知状态在界面上的日语显示名（数据中仍保存英文代码）
+COGNITIVE_STATE_LABELS_JA = {
+    "Understand": "理解", "Doubt": "疑問", "Neutral": "中立", "Disgust": "嫌悪",
+}
 
 
 class AttentionAnalyzer:
@@ -147,17 +170,18 @@ class AttentionAnalyzer:
 
         return nodding_frames_count / len(self.perclos_buffer)
 
-    def process_frame(self, all_probs, ear, mar, delta_pitch, delta_yaw):
+    def process_frame(self, all_probs, ear, mar, delta_pitch, delta_yaw) -> AnalysisResult:
         """
         接收 YOLO 分类概率、MediaPipe 特征以及 3D 头部相对姿态进行综合判断
         """
         alert_data = None
-        status_text = "Status: Initializing..."
+        status_text = "初期化中…"
         score = 100
         now = time.time()
         has_face = (ear is not None and mar is not None)
 
-        current_cognitive_state = "Neutral"  # 默认状态
+        current_cognitive_state = None  # 本帧没有表情结果时保持 None，不当作 Neutral 记录
+        spatial_state = "normal"
 
         # 表情标签前向拦截（可删除） + 迁移学习 + 疲劳惩罚
         if has_face and all_probs is not None and len(all_probs) == 7:
@@ -225,7 +249,7 @@ class AttentionAnalyzer:
                 p_u, p_d, p_dis, p_n = 0, 0, 0, 1.0
 
             # 取最大值作为当前微观窗口的基础离散状态
-            states = ["Understand", "Doubt", "Disgusted", "Neutral"]
+            states = ["Understand", "Doubt", "Disgust", "Neutral"]
             fused_probs = [p_u, p_d, p_dis, p_n]
             max_idx = np.argmax(fused_probs)
             current_cognitive_state = states[max_idx]
@@ -267,7 +291,7 @@ class AttentionAnalyzer:
 
             u_count = macro_list.count("Understand")    #理解状态
             d_count = macro_list.count("Doubt") #疑惑状态
-            dis_count = macro_list.count("Disgusted")   #厌烦状态
+            dis_count = macro_list.count("Disgust")   #厌烦状态
             n_count = macro_list.count("Neutral")   #自然听课状态
 
             # 新策略
@@ -278,12 +302,13 @@ class AttentionAnalyzer:
             # 保证分数范围在0-100之间
             score = max(0, min(100, int(raw_score)))
 
-            status_text = f"Cognitive: {current_cognitive_state.upper()}"
+            if current_cognitive_state is not None:
+                status_text = f"認知状態：{COGNITIVE_STATE_LABELS_JA[current_cognitive_state]}"
 
             # 警报逻辑：基于 self.perclos_val 直接触发疲劳警报（后续需更改）
             if self.perclos_val > 0.38:
                 if now - self.last_alert_time > 60.0:
-                    alert_data = ('fatigue', 'Fatigue Alert', '系统检测到您当前较为疲劳，建议起身活动或喝口水休息一下。')
+                    alert_data = ('fatigue', '疲労アラート', '疲れが見られます。少し体を動かすか、水を飲んで休憩しましょう。')
                     self.last_alert_time = now
 
         # 阶段三：空间物理规则最高优先级覆写　（有必要考虑是否有必要添加此功能）
@@ -302,12 +327,15 @@ class AttentionAnalyzer:
 
                 # 业务逻辑：长时低头前根据之前的专注度分数来判断本次行为的可能性
                 # 补充：目前为简单逻辑的测试阶段，后续可以尝试加入概率计算公式（长期离席判别同理）
+                spatial_state = "head_down"
                 if down_duration > self.HEAD_DOWN_MAX_SECONDS:
                     # 查阅 15 秒前的历史成绩
                     if self.score_before_head_down >= 60:
-                        status_text = "Focus: TAKING NOTES"
+                        status_text = "集中：ノート記録中"
+                        spatial_state = "taking_notes"
                     else:
-                        status_text = "Focus: DISTRACTED"
+                        status_text = "注意散漫"
+                        spatial_state = "distracted"
                         # 我们用一个时间差的二次方（或乘以系数）作为惩罚！
                         overtime = down_duration - self.HEAD_DOWN_MAX_SECONDS
                         penalty = int((overtime ** 2) * 0.2)
@@ -315,7 +343,7 @@ class AttentionAnalyzer:
 
                         # 每 30 秒响一次
                         if now - self.last_alert_time > 30.0:
-                            alert_data = ('head_down', 'Learning Alert', '检测到长时间开小差，如需休息请先暂停。')
+                            alert_data = ('head_down', '学習アラート', '長時間集中が途切れています。休憩する場合は先に一時停止してください。')
                             self.last_alert_time = now
             else:
                 # 一旦抬头，秒表清零
@@ -336,7 +364,8 @@ class AttentionAnalyzer:
             #在丢失面部时，前回顾之前有没有处于低头状态，如果有那么给5秒的惯性冗余
             if self.last_known_pitch < self.PITCH_DOWN_THRESH:
                 if absent_duration <= 5.0:
-                    status_text = "Focus: TAKING NOTES (Head Down)"
+                    status_text = "集中：ノート記録中（下向き）"
+                    spatial_state = "hidden_notes"
                     score = self.score_before_absent
                 # 数据插补 虽然看不到表情，但强行给宏观大脑塞入 Neutral 标签
                     self.macro_buffer.append((now, "Neutral"))
@@ -344,10 +373,12 @@ class AttentionAnalyzer:
                     # 超过5秒之后 判断之前的分数 执行长时低头的判断逻辑
                     # 以丢失瞬间的分数为准：无脸时宏观窗口不再更新，60 秒后清空会让当前分数回落为默认 100
                     if self.score_before_absent >= 60:
-                        status_text = "Focus: TAKING NOTES (Head Down)"
+                        status_text = "集中：ノート記録中（下向き）"
+                        spatial_state = "hidden_notes"
                         self.macro_buffer.append((now, "Neutral"))
                     else:
-                        status_text = "Status: ABNORMAL (Hidden)"
+                        status_text = "異常：顔が長時間検出されません"
+                        spatial_state = "hidden_abnormal"
                         # 我们用一个时间差的二次方（或乘以系数）作为惩罚！
                         overtime = absent_duration - 5.0
                         penalty = int((overtime ** 2) * 0.2)
@@ -355,13 +386,14 @@ class AttentionAnalyzer:
 
                         # 每 30 秒响一次
                         if now - self.last_alert_time > 30.0:
-                            alert_data = ('hidden', 'Alert', '检测到长时间面部丢失，请调整姿态或返回座位！')
+                            alert_data = ('hidden', 'アラート', '顔が長時間検出されません。姿勢を整えるか、席に戻ってください。')
                             self.last_alert_time = now
 
             # 业务逻辑：两分钟内非线性平滑降分
             else:
                 if absent_duration <= self.FACE_NOT_DETECTED_MAX_SECONDS:
-                    status_text = "Status: AWAY (Short)"
+                    status_text = "離席中"
+                    spatial_state = "away"
                     # 1. 计算时间流逝的基础比例 (0.0 到 1.0)
                     base_ratio = absent_duration / self.FACE_NOT_DETECTED_MAX_SECONDS
                     # 2. 套用三次幂曲线，制造“先缓后急”
@@ -370,12 +402,23 @@ class AttentionAnalyzer:
                     current_penalty = self.score_before_absent * decay_ratio
                     score = max(0, int(self.score_before_absent - current_penalty))
                 else:
-                    status_text = "Status: ABSENT"
+                    status_text = "不在"
+                    spatial_state = "absent"
                     score = 0
                     if now - self.last_alert_time > 30.0:
-                        alert_data = ('absence', 'Alert', 'Student Absent! Please return to seat.')
+                        alert_data = ('absence', 'アラート', '離席が続いています。席に戻ってください。')
                         self.last_alert_time = now
         else:
             # 脸一回来，秒表清零
             self.face_not_detected_time = None
-        return score, status_text, alert_data
+        return AnalysisResult(
+            score=score,
+            status_text=status_text,
+            alert=alert_data,
+            has_face=has_face,
+            cognitive_state=current_cognitive_state,
+            fatigue_index=self.perclos_val,
+            spatial_state=spatial_state,
+            delta_pitch=delta_pitch,
+            delta_yaw=delta_yaw,
+        )

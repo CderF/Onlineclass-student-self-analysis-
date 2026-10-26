@@ -8,10 +8,17 @@ from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QImage, QPixmap
 
 
+# 空间状态 → 状态文字的颜色语气（界面按语气上色，不再匹配文字关键词）
+SPATIAL_STATE_TONES = {
+    "distracted": "danger", "hidden_abnormal": "danger", "absent": "danger",
+    "taking_notes": "success", "hidden_notes": "success",
+}
+
+
 class CameraThread(QThread):
     change_pixmap_signal = pyqtSignal(QPixmap)
     update_score_signal = pyqtSignal(int)
-    update_status_signal = pyqtSignal(str)
+    update_status_signal = pyqtSignal(str, str)  # (状态文字, 语气: info / success / warning / danger / muted)
     alert_signal = pyqtSignal(str, str)
 
     def __init__(self):
@@ -23,6 +30,11 @@ class CameraThread(QThread):
         self.mediapipe = FaceMeshInference()
         self.analyzer = AttentionAnalyzer()
 
+        # 校准基准在整次课程记录内有效，暂停后继续时沿用，不重新校准
+        self.is_calibrated = False
+        self.baseline_pitch = 0.0
+        self.baseline_yaw = 0.0
+
     def set_draw_mesh(self, state: bool):
         """控制是否绘制面部网格"""
         self.draw_mesh = state
@@ -33,8 +45,8 @@ class CameraThread(QThread):
 
         if not cap.isOpened():
             print("❌ 错误：无法打开摄像头！")
-            self.update_status_signal.emit("Status: Camera Failed")
-            self.alert_signal.emit("Camera Error", "无法连接摄像头，请检查设备是否被占用或是否有权限！")
+            self.update_status_signal.emit("カメラを開けません", "warning")
+            self.alert_signal.emit("カメラエラー", "カメラに接続できません。他のアプリが使用中でないか、アクセス権限があるか確認してください。")
             return
 
         print("✅ 摄像头已打开，开始读取画面...")
@@ -45,11 +57,11 @@ class CameraThread(QThread):
         """
         calibration_duration = 3.0
         calibration_start_time = time.time()
-        is_calibrating = True
+        is_calibrating = not self.is_calibrated
         pitch_buffer = []
         yaw_buffer = []
-        self.baseline_pitch = 0.0
-        self.baseline_yaw = 0.0
+        if not is_calibrating:
+            self.update_status_signal.emit("モニタリング中", "success")
 
         while self._run_flag:
             ret, frame = cap.read()
@@ -100,7 +112,7 @@ class CameraThread(QThread):
                                 pitch_buffer.append(pitch)
                                 yaw_buffer.append(yaw)
 
-                            self.update_status_signal.emit(f"CALIBRATING: 请正视屏幕... {remaining}s")
+                            self.update_status_signal.emit(f"キャリブレーション中：画面を正面から見てください… 残り {remaining} 秒", "info")
                             score = 100
                         else:
                             # 3 秒结束：计算【中位数】并锁定基准线 (彻底免疫极端离群噪点)
@@ -115,7 +127,8 @@ class CameraThread(QThread):
                                 print("⚠️ 校准期间未检测到人脸，使用默认 0 度基准")
 
                             is_calibrating = False
-                            self.update_status_signal.emit("Status: Monitoring Active")
+                            self.is_calibrated = True
+                            self.update_status_signal.emit("モニタリング中", "success")
                             score = 100
                     else:
                         # 正式监控期：计算差值 (Delta)
@@ -129,13 +142,15 @@ class CameraThread(QThread):
                                         (0, 255, 0), 2)
 
                         # 调用注意力规则引擎
-                        score, status_text, alert_data = self.analyzer.process_frame(
+                        result = self.analyzer.process_frame(
                             all_probs, ear, mar, delta_pitch, delta_yaw
                         )
-                        self.update_status_signal.emit(status_text)
+                        score = result.score
+                        tone = SPATIAL_STATE_TONES.get(result.spatial_state, "warning")
+                        self.update_status_signal.emit(result.status_text, tone)
 
-                        if alert_data is not None:
-                            _, alert_title, alert_msg = alert_data
+                        if result.alert is not None:
+                            _, alert_title, alert_msg = result.alert
                             self.alert_signal.emit(alert_title, alert_msg)
 
                     # 发射 UI 更新信号
@@ -156,3 +171,13 @@ class CameraThread(QThread):
     def stop(self):
         self._run_flag = False
         self.wait()
+
+    def pause(self):
+        """暂停：结束采集循环并释放摄像头"""
+        self.stop()
+
+    def resume(self):
+        """继续：重新打开摄像头；滑动窗口与计时器全部清空，校准基准保留"""
+        self.analyzer = AttentionAnalyzer()
+        self._run_flag = True
+        self.start()

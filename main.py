@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QIcon, QFont
 from qfluentwidgets import (
     NavigationItemPosition, FluentWindow, SubtitleLabel, setFont,
-    Theme, setTheme
+    Theme, setTheme, setFontFamilies
 )
 from qfluentwidgets import FluentIcon as FIF
 # Import our custom interfaces
@@ -21,7 +21,7 @@ class MainWindow(FluentWindow):
         super().__init__()
 
         # Window Configuration
-        self.setWindowTitle("YOLO Attention Monitor")
+        self.setWindowTitle("学習エンゲージメント自己分析")
         self.resize(1100, 750)
 
         # Create Sub-Interfaces
@@ -42,7 +42,7 @@ class MainWindow(FluentWindow):
         self.addSubInterface(
             self.monitorInterface,
             FIF.CAMERA,
-            "Monitor",
+            "モニター",
             position=NavigationItemPosition.TOP
         )
 
@@ -50,7 +50,7 @@ class MainWindow(FluentWindow):
         self.addSubInterface(
             self.reportInterface,
             FIF.PIE_SINGLE,
-            "Analysis",
+            "分析レポート",
             position=NavigationItemPosition.TOP
         )
 
@@ -83,7 +83,9 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
 
-    app.setFont(QFont("PingFang SC", 10))
+    # 界面为日语：PingFang SC 会把日语汉字显示成中文字形，改用 Hiragino Sans
+    app.setFont(QFont("Hiragino Sans", 10))
+    setFontFamilies(["Hiragino Sans", "Segoe UI"])  # qfluentwidgets 组件不跟随 app 字体，需单独设置
 
     # 2. Create and show window
     w = MainWindow()

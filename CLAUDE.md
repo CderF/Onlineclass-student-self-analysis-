@@ -12,12 +12,14 @@ Research prototype for a paper (student self-analysis of engagement in online cl
 
 - Python env: conda env `demo` (Python 3.10) at `/Users/fang/Documents/Code/miniconda3/envs/demo/bin/python` (also set in `.vscode/settings.json`). The base `python3` on PATH is 3.13 and lacks the deps.
 - Pinned in that env: `mediapipe 0.9.2.1` (code uses the legacy `mp.solutions.face_mesh` API), `ultralytics 8.4.19`.
+- Report page stack (`docs/adr/0001-qt-echarts-report.md`): `PyQtWebEngine 5.15.7` with `PyQtWebEngine-Qt5==5.15.17`, which must match `PyQt5-Qt5`. ECharts 6.1.0 is vendored at `app/view/web/vendor/echarts/` and loaded from disk, never from a CDN. Import `PyQt5.QtWebEngineWidgets` before the `QApplication` is created.
+- The UI language is Japanese. The font is `Hiragino Sans`, set both via `app.setFont` and via qfluentwidgets `setFontFamilies` in `main.py`. PingFang SC would render Japanese kanji with Chinese glyph forms. Console `print`s stay in Chinese because they are developer-facing.
 - Run: `python main.py` **from the repo root**. `ExpressionClassifier` loads `weights/best.pt` via a cwd-relative path.
 - Weights are not in git (`weights/*.pt`, `*.dat`, `*.onnx` are ignored). `weights/best.pt` must exist locally; if loading fails, the classifier sets `model = None` and silently returns no probabilities.
-- No test suite or linter. Verify with `python -m py_compile <files>`. For logic checks, write a throwaway script that imports `app.*` directly and runs without the GUI or a camera, for example:
-  - Feed a still image to `FaceMeshInference.process_frame`.
-  - Patch `attention_rules.time.time` to drive `AttentionAnalyzer.process_frame` through simulated seconds.
-  - Face images: `ultralytics/assets/zidane.jpg` works if cropped to a close-up face (FaceMesh misses small faces).
+- Tests: run `python -m pytest` from the repo root (`tests/`, about 10 s). `conftest.py` sets `QT_QPA_PLATFORM=offscreen`, puts the repo root on `sys.path`, and `chdir`s there. There is no linter; `python -m py_compile <files>` is the syntax check. Patterns used in the tests:
+  - Patch `attention_rules.time.time` with a fake clock to drive `AttentionAnalyzer.process_frame` through simulated seconds (`tests/test_attention_rules.py`).
+  - Patch `camera_thread.cv2.VideoCapture` with a fake camera to run `CameraThread` headless (`tests/test_monitor_interface.py`). That test is skipped when `weights/best.pt` is missing.
+  - Face images: `ultralytics/assets/zidane.jpg` works if cropped to a close-up face (`[0:400, 800:1200]`; FaceMesh misses small faces).
 
 ## Per-frame pipeline (spans `camera_thread.py` → `mediapipe_inference.py` → `yolo_inference.py` → `attention_rules.py`)
 
@@ -34,13 +36,14 @@ Research prototype for a paper (student self-analysis of engagement in online cl
    After scoring, spatial rules override the score and status:
    - head down longer than 15 s;
    - face lost: 5 s grace period if the student was looking down beforehand, otherwise cubic decay over 120 s, then `ABSENT`.
-   It returns `(score, status_text, alert_data)`.
-5. Results reach the UI only via the `pyqtSignal`s on `CameraThread` (pixmap, score, status text, alert).
+   It returns an `AnalysisResult` dataclass: score, `status_text` (display only), alert, `cognitive_state` (`None` when the frame has no expression result), `fatigue_index`, `spatial_state` (one of 8 codes, see `GLOSSARY.md`), deltas. Consumers other than the status label (recording, reports) must read the structured fields, never parse `status_text`.
+5. Results reach the UI only via the `pyqtSignal`s on `CameraThread`: pixmap, score, `(status_text, tone)`, alert.
+6. **Pause/resume** (`CameraThread.pause` / `resume`): pausing releases the camera. Resuming reopens it, keeps the calibration baseline (`is_calibrated`), and replaces the `AttentionAnalyzer`, so all windows and timers start empty.
 
 ## Cross-file couplings to watch
 
 - **Class order**: `AttentionAnalyzer.EMOTION_IDX` hardcodes the 7-class order of the current `best.pt` (Anger, Disgust, Fear, Happy, Neutral, Sad, Surprise). Expression processing is gated on `len(all_probs) == 7`. The paper's planned model is a transfer-learned **4-class** model (Understand/Doubt/Neutral/Disgust). Swapping it in would silently skip all expression logic until the 7→4 mapping in `attention_rules.py` is replaced.
-- **Status-text colors**: `MonitorInterface.update_status_text` picks the label color by ordered, case-sensitive substring match on the status text. The order is: blue `CALIBRATING` → red `PHONE`/`HEAD DOWN`/`ABSENT`/`DISTRACTED`/`ABNORMAL` → green `Focus`/`Active` → orange for everything else. Red must be checked before green, because `Focus: DISTRACTED` also contains `Focus`. Renaming status strings in `attention_rules.py` or `camera_thread.py` changes the UI colors. `show_async_alert` uses error styling only when the alert title contains `CRITICAL`.
+- **Status-text colors**: the color comes from a tone (`info` / `success` / `warning` / `danger` / `muted`) sent alongside the text, never from the text itself. `SPATIAL_STATE_TONES` in `camera_thread.py` maps each spatial state to a tone, and `MonitorInterface.STATUS_TONE_STYLES` maps each tone to a color. Status strings are display-only Japanese and can be reworded freely. `show_async_alert` uses error styling only when the alert title contains `CRITICAL`.
 - **Alert rate limiting**: all alert types share one `last_alert_time` cooldown.
 - **Thread lifetime**: `CameraThread.stop()` sets the run flag and calls `wait()`. `MainWindow.closeEvent` also stops the thread, so keep `camera_thread` as the attribute name on `MonitorInterface`.
 - **Report page**: `ReportInterface` is a placeholder. Session data is not persisted or passed to it yet (`load_session_data` / `render_charts` are stubs).

@@ -13,13 +13,16 @@ _Avoid_：日志、异常
 ## 指标
 
 **认知状态**：每帧得到的 4 个学习状态标签之一——Understand / Doubt / Neutral / Disgust。由表情概率映射而来；RAF-DB 的 7 类（Anger、Happy 等）称为「表情」，不是认知状态。
-_Avoid_：情绪、学习感情（论文日语原文「学習感情」仅在论文中使用）、Disgusted（代码 `attention_rules.py` 中的现有字符串，待统一）
+_Avoid_：情绪、学习感情（论文日语原文「学習感情」仅在论文中使用）、Disgusted
 
 **疲劳指数**：0–1 的连续值，由 8 秒窗口内的 PERCLOS、眨眼、哈欠、困倦性点头频率加权得到（公式见 `README.md`）。
 _Avoid_：疲劳度、perclos_val（代码变量名，实际含义是疲劳指数而不只是 PERCLOS）
 
 **参与度分数**：0–100 的整数，由疲劳指数与 60 秒窗口内认知状态的分布加权得到，再被低头 / 离席规则覆盖。日语界面用「エンゲージメント」。
 _Avoid_：注意力分数、Attention Score、专注度（界面现有的 "Attention" 字样待统一）
+
+**空间状态**：每帧由低头 / 面部丢失规则得出的代码，共 8 个——`normal` 正常、`head_down` 低头未满 15 秒、`taking_notes` 长时低头且低头前 ≥60 分、`distracted` 长时低头且 <60 分、`hidden_notes` 低头后面部丢失（5 秒内，或丢失前 ≥60 分）、`hidden_abnormal` 低头后面部丢失超过 5 秒且 <60 分、`away` 未低头时面部丢失 ≤120 秒、`absent` 面部丢失超过 120 秒。
+_Avoid_：状态文字（`status_text` 只用于显示，不作为数据）
 
 ## 分析
 

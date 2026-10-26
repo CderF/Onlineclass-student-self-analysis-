@@ -169,7 +169,7 @@ YOLO 输出的 7 类原生表情概率向量 $P = [p_{\text{anger}}, p_{\text{di
 $$\begin{aligned}
 R_{\text{Understand}} &= 1.0 \cdot p_{\text{happy}} + 0.3 \cdot p_{\text{surprise}} \\
 R_{\text{Doubt}}      &= 0.8 \cdot p_{\text{anger}} + 0.5 \cdot p_{\text{sad}} + 0.7 \cdot p_{\text{surprise}} + 0.1 \cdot p_{\text{fear}} \\
-R_{\text{Disgusted}}  &= 1.0 \cdot p_{\text{disgust}} + 0.2 \cdot p_{\text{anger}} + 0.5 \cdot p_{\text{sad}} + 0.1 \cdot p_{\text{fear}} \\
+R_{\text{Disgust}}  &= 1.0 \cdot p_{\text{disgust}} + 0.2 \cdot p_{\text{anger}} + 0.5 \cdot p_{\text{sad}} + 0.1 \cdot p_{\text{fear}} \\
 R_{\text{Neutral}}    &= 1.0 \cdot p_{\text{neutral}}
 \end{aligned}$$
 
@@ -191,7 +191,7 @@ $$\text{Score}_{\text{macro}} = 0.5625 \cdot \text{Score}_{\text{fatigue}} + 0.4
 
 $$\text{Score}_{\text{fatigue}} = (1 - \text{Fatigue}) \times 100$$
 
-$$\text{Score}_{\text{emotion}} = \frac{1.0 \cdot N_{\text{Understand}} + 0.5 \cdot N_{\text{Neutral}} + 0.7 \cdot N_{\text{Doubt}} + 0.1 \cdot N_{\text{Disgusted}}}{N_{\text{total}}} \times 100$$
+$$\text{Score}_{\text{emotion}} = \frac{1.0 \cdot N_{\text{Understand}} + 0.5 \cdot N_{\text{Neutral}} + 0.7 \cdot N_{\text{Doubt}} + 0.1 \cdot N_{\text{Disgust}}}{N_{\text{total}}} \times 100$$
 
 $N_{\text{Understand}}, N_{\text{Neutral}}, \ldots, N_{\text{total}}$ 分别表示各认知状态在 60 秒宏观窗口内的帧数计数和总帧数；最终得分取整并截断至 $[0, 100]$。
 

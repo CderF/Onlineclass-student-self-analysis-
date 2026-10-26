@@ -1,4 +1,4 @@
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QApplication
 from PyQt5.QtGui import QPixmap, QColor
 from qfluentwidgets import (
@@ -29,12 +29,12 @@ class MonitorInterface(QWidget):
         # --- UI Components ---
 
         # 1. Header
-        self.titleLabel = TitleLabel("Real-time Attention Monitor", self)
+        self.titleLabel = TitleLabel("リアルタイム・エンゲージメントモニター", self)
 
         # 2. Main Display (Camera Feed)
         self.videoCard = CardWidget(self)
         self.videoLayout = QVBoxLayout(self.videoCard)
-        self.videoLabel = QLabel("Camera Feed Offline", self.videoCard)
+        self.videoLabel = QLabel("カメラ停止中", self.videoCard)
         self.videoLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.videoLabel.setStyleSheet("background-color: #202020; color: #808080; border-radius: 8px;")
         self.videoLabel.setMinimumSize(640, 480)
@@ -44,8 +44,8 @@ class MonitorInterface(QWidget):
         self.statsPanel = QWidget(self)
         self.statsLayout = QVBoxLayout(self.statsPanel)
 
-        # Attention Score Indicator
-        self.scoreLabel = BodyLabel("Status: Waiting to start...", self.statsPanel)
+        # Engagement Score Indicator
+        self.scoreLabel = BodyLabel("開始待ち", self.statsPanel)
         self.progressRing = ProgressRing(self.statsPanel)
         self.progressRing.setFixedSize(120, 120)
         self.progressRing.setTextVisible(True)
@@ -53,18 +53,23 @@ class MonitorInterface(QWidget):
 
         # ====== 新增：面部网格控制开关 ======
         self.meshSwitch = SwitchButton(parent=self.statsPanel)
-        self.meshSwitch.setText("Draw Face Mesh")
+        self.meshSwitch.setOnText("顔メッシュ：表示")
+        self.meshSwitch.setOffText("顔メッシュ：非表示")
         self.meshSwitch.setChecked(True) # 默认开启
         self.meshSwitch.checkedChanged.connect(self._on_mesh_switch_toggled)
         # ==================================
 
         # Controls
-        self.startBtn = PrimaryPushButton(FIF.PLAY, "Start Monitor", self.statsPanel)
-        self.stopBtn = PrimaryPushButton(FIF.PAUSE, "Stop Monitor", self.statsPanel)
+        self.startBtn = PrimaryPushButton(FIF.PLAY, "開始", self.statsPanel)
+        self.pauseBtn = PrimaryPushButton(FIF.PAUSE, "一時停止", self.statsPanel)
+        self.stopBtn = PrimaryPushButton(FIF.POWER_BUTTON, "終了", self.statsPanel)
+        self.pauseBtn.setEnabled(False)
         self.stopBtn.setEnabled(False)
+        self.is_paused = False
 
         # Connect button signals
         self.startBtn.clicked.connect(self._on_start_clicked)
+        self.pauseBtn.clicked.connect(self._on_pause_clicked)
         self.stopBtn.clicked.connect(self._on_stop_clicked)
 
         # Add widgets to stats layout
@@ -75,6 +80,7 @@ class MonitorInterface(QWidget):
         self.statsLayout.addWidget(self.meshSwitch, 0, Qt.AlignmentFlag.AlignCenter) # 将开关加入布局
         self.statsLayout.addStretch(1)
         self.statsLayout.addWidget(self.startBtn)
+        self.statsLayout.addWidget(self.pauseBtn)
         self.statsLayout.addWidget(self.stopBtn)
 
         # --- Assembly ---
@@ -105,24 +111,20 @@ class MonitorInterface(QWidget):
         """仅负责更新圆环进度条的分数"""
         self.progressRing.setValue(value)
 
-    def update_status_text(self, status_text: str):
+    STATUS_TONE_STYLES = {
+        "info": "color: #3B82F6; font-weight: bold;",  # 蓝色 (校准中)
+        "danger": "color: #EF4444; font-weight: bold;",  # 红色 (分心/离线)
+        "success": "color: #10B981; font-weight: bold;",  # 绿色 (专注)
+        "warning": "color: #F59E0B; font-weight: bold;",  # 橙色 (监控中/未知)
+        "muted": "color: #808080;",  # 灰色 (暂停/停止)
+    }
+
+    def update_status_text(self, status_text: str, tone: str = "warning"):
         """
-        接收后台发来的状态文本，并根据关键字动态改变文字颜色。
+        接收后台发来的状态文本，按语气（而非文字内容）设置颜色。
         """
         self.scoreLabel.setText(status_text)
-
-        # --- 新增：识别校准状态并显示蓝色 ---
-        if "CALIBRATING" in status_text:
-            self.scoreLabel.setStyleSheet("color: #3B82F6; font-weight: bold;")  # 蓝色
-        # ---------------------------------
-        # 红色需先于绿色判断："Focus: DISTRACTED" 同时包含 "Focus"
-        elif ("PHONE" in status_text or "HEAD DOWN" in status_text or "ABSENT" in status_text
-              or "DISTRACTED" in status_text or "ABNORMAL" in status_text):
-            self.scoreLabel.setStyleSheet("color: #EF4444; font-weight: bold;")  # 红色 (分心/离线)
-        elif "Focus" in status_text or "Active" in status_text:
-            self.scoreLabel.setStyleSheet("color: #10B981; font-weight: bold;")  # 绿色 (专注)
-        else:
-            self.scoreLabel.setStyleSheet("color: #F59E0B; font-weight: bold;")  # 橙色 (监控中/未知)
+        self.scoreLabel.setStyleSheet(self.STATUS_TONE_STYLES.get(tone, self.STATUS_TONE_STYLES["warning"]))
     def show_async_alert(self, title: str, message: str):
         """
         接收后台的报警信号，弹出 qfluentwidgets 的 InfoBar 轻量级通知。
@@ -163,8 +165,10 @@ class MonitorInterface(QWidget):
 
     def _on_start_clicked(self):
         self.startBtn.setEnabled(False)
+        self.pauseBtn.setEnabled(True)
         self.stopBtn.setEnabled(True)
-        self.videoLabel.setText("正在启动摄像头并加载模型...")
+        self._set_paused(False)
+        self.videoLabel.setText("カメラとモデルを起動しています…")
         self.scoreLabel.setStyleSheet("color: #808080;")
 
         # 变更为 camera_thread
@@ -179,13 +183,42 @@ class MonitorInterface(QWidget):
 
         self.camera_thread.start()
 
+    def _on_pause_clicked(self):
+        if not hasattr(self, 'camera_thread'):
+            return
+        if self.is_paused:
+            self._set_paused(False)
+            self.videoLabel.setText("カメラを再起動しています…")
+            self.camera_thread.set_draw_mesh(self.meshSwitch.isChecked())
+            self.camera_thread.resume()
+        else:
+            self._set_paused(True)
+            self.camera_thread.pause()
+            # 线程结束前发出的画面/状态信号仍在事件队列中，延后到它们之后再显示暂停状态
+            QTimer.singleShot(0, self._show_paused)
+
+    def _show_paused(self):
+        self.videoLabel.clear()
+        self.videoLabel.setText("一時停止中")
+        self.update_status_text("一時停止中", "muted")
+
+    def _set_paused(self, paused: bool):
+        self.is_paused = paused
+        if paused:
+            self.pauseBtn.setText("再開")
+            self.pauseBtn.setIcon(FIF.PLAY)
+        else:
+            self.pauseBtn.setText("一時停止")
+            self.pauseBtn.setIcon(FIF.PAUSE)
+
     def _on_stop_clicked(self):
         self.startBtn.setEnabled(True)
+        self.pauseBtn.setEnabled(False)
         self.stopBtn.setEnabled(False)
-        self.videoLabel.setText("Camera Feed Offline")
+        self._set_paused(False)
+        self.videoLabel.setText("カメラ停止中")
         self.update_attention_level(0)
-        self.update_status_text("Status: Stopped")
-        self.scoreLabel.setStyleSheet("color: #808080;")
+        self.update_status_text("停止しました", "muted")
 
         # 变更为 camera_thread
         if hasattr(self, 'camera_thread'):

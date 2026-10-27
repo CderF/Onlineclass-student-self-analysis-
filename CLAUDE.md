@@ -16,8 +16,9 @@ Research prototype for a paper (student self-analysis of engagement in online cl
 - The UI language is Japanese. The font is `Hiragino Sans`, set both via `app.setFont` and via qfluentwidgets `setFontFamilies` in `main.py`. PingFang SC would render Japanese kanji with Chinese glyph forms. Console `print`s stay in Chinese because they are developer-facing.
 - Run: `python main.py` **from the repo root**. `ExpressionClassifier` loads `weights/best.pt` via a cwd-relative path.
 - Weights are not in git (`weights/*.pt`, `*.dat`, `*.onnx` are ignored). `weights/best.pt` must exist locally; if loading fails, the classifier sets `model = None` and silently returns no probabilities.
+- Every issue ships with tests, starting from #4: pytest in `tests/`, plus dedicated verification scripts in `test-scripts/` (`verify_issue<N>_*.py`; see its README) for what pytest can't simulate well: real crashes, concurrency, long runs, performance.
 - Tests: run `python -m pytest` from the repo root (`tests/`, about 10 s). `conftest.py` sets `QT_QPA_PLATFORM=offscreen`, puts the repo root on `sys.path`, and `chdir`s there. There is no linter; `python -m py_compile <files>` is the syntax check. Patterns used in the tests:
-  - Patch `attention_rules.time.time` with a fake clock to drive `AttentionAnalyzer.process_frame` through simulated seconds (`tests/test_attention_rules.py`).
+  - Patch `attention_rules.time.time` with a fake clock to drive `AttentionAnalyzer.process_frame` through simulated seconds (`tests/test_attention_rules.py`). `attention_rules.time` is the global `time` module, so this patches `time.time` process-wide. Use `monkeypatch`, or save the real function before patching and restore it afterwards.
   - Patch `camera_thread.cv2.VideoCapture` with a fake camera to run `CameraThread` headless (`tests/test_monitor_interface.py`). That test is skipped when `weights/best.pt` is missing.
   - Face images: `ultralytics/assets/zidane.jpg` works if cropped to a close-up face (`[0:400, 800:1200]`; FaceMesh misses small faces).
 

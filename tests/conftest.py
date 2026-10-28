@@ -15,6 +15,7 @@ os.chdir(ROOT)
 
 @pytest.fixture(scope="session")
 def qapp():
+    import PyQt5.QtWebEngineWidgets  # noqa: F401  必须在创建 QApplication 之前导入
     from PyQt5.QtWidgets import QApplication
     return QApplication.instance() or QApplication(sys.argv)
 

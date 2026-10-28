@@ -10,7 +10,7 @@ from qfluentwidgets import FluentIcon as FIF
 # Import our custom interfaces
 from app import session_store
 from app.view.monitor_interface import MonitorInterface
-from app.view.report_interface import ReportInterface
+from app.view.report_interface import ReportInterface  # 同时导入 QtWebEngineWidgets，必须早于创建 QApplication
 
 
 class MainWindow(FluentWindow):

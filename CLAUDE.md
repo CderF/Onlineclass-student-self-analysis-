@@ -17,7 +17,7 @@ Research prototype for a paper (student self-analysis of engagement in online cl
 - Run: `python main.py` **from the repo root**. `ExpressionClassifier` loads `weights/best.pt` via a cwd-relative path.
 - Weights are not in git (`weights/*.pt`, `*.dat`, `*.onnx` are ignored). `weights/best.pt` must exist locally; if loading fails, the classifier sets `model = None` and silently returns no probabilities.
 - Every issue ships with tests, starting from #4: pytest in `tests/`, plus dedicated verification scripts in `test-scripts/` (`verify_issue<N>_*.py`; see its README) for what pytest can't simulate well: real crashes, concurrency, long runs, performance.
-- Tests: run `python -m pytest` from the repo root (`tests/`, about 70 s; the `CameraThread` flow tests account for most of it and are skipped without `weights/best.pt`). `conftest.py` sets `QT_QPA_PLATFORM=offscreen`, puts the repo root on `sys.path`, and `chdir`s there. There is no linter; `python -m py_compile <files>` is the syntax check. Patterns used in the tests:
+- Tests: run `python -m pytest` from the repo root (`tests/`, about 80 s; the `CameraThread` flow tests account for most of it and are skipped without `weights/best.pt`). `conftest.py` sets `QT_QPA_PLATFORM=offscreen`, puts the repo root on `sys.path`, and `chdir`s there. There is no linter; `python -m py_compile <files>` is the syntax check. Patterns used in the tests:
   - Patch `attention_rules.time.time` with a fake clock to drive `AttentionAnalyzer.process_frame` through simulated seconds (`tests/test_attention_rules.py`). `attention_rules.time` is the global `time` module, so this patches `time.time` process-wide. Use `monkeypatch`, or save the real function before patching and restore it afterwards.
   - Patch `camera_thread.cv2.VideoCapture` with a fake camera to run `CameraThread` headless (`tests/test_monitor_interface.py`). That test is skipped when `weights/best.pt` is missing.
   - Face images: `ultralytics/assets/zidane.jpg` works if cropped to a close-up face (`[0:400, 800:1200]`; FaceMesh misses small faces). Use the shared `fake_camera` fixture in `conftest.py`; setting `show_face=False` simulates leaving the seat.
@@ -58,10 +58,18 @@ Research prototype for a paper (student self-analysis of engagement in online cl
   - Recording errors go through `_guard_record`: monitoring continues and a single 記録エラー alert is shown.
 - After Stop, `MonitorInterface._after_stop` asks for the course name. In tests, patch `_ask_course_name`. `MonitorInterface.db_path` / `CameraThread(db_path=)` override the DB, and `tests/conftest.py` redirects `DEFAULT_DB_PATH` to a temp file for every test.
 
+## Report page (#5, `app/view/report_interface.py` + `app/view/web/`)
+
+- The whole report tab is one `QWebEngineView` showing `app/view/web/report.html` (Japanese, tabs 授業ごと / 全体の推移). Course selection and later record management (#10) live in the page, not in Qt widgets.
+- Data path: `report.js` calls slots on `ReportBridge` over `QWebChannel` (`qrc:///qtwebchannel/qwebchannel.js`). Each slot opens its own connection in the UI thread, reads via `app/report_data.py` (`list_sessions`, `load_session`), and returns `{"data": ..., "error": ...}` as a JSON string.
+- `ReportInterface.showEvent` emits `data_changed_signal`; the page then reloads the list. If a new record appeared it selects the newest one, otherwise it keeps the current selection. `body[data-state]` is `loading` / `ready` / `empty` / `error`.
+- The page uses its own off-the-record `QWebEngineProfile` with `LocalOnlyInterceptor`, which blocks every non-`file`/`qrc`/`data` request (`interceptor.blocked` records them). `ReportPage.js_errors` collects console errors.
+- The profile is a child of the page so it is released after the page. A `ReportInterface` still alive at interpreter exit (e.g. a pending `deleteLater` in tests) crashes WebEngine, so tests destroy it with `sip.delete`. Pages may be polled before `<body>` exists: use `document.body && ...`.
+
 ## Cross-file couplings to watch
 
 - **Class order**: `AttentionAnalyzer.EMOTION_IDX` hardcodes the 7-class order of the current `best.pt` (Anger, Disgust, Fear, Happy, Neutral, Sad, Surprise). Expression processing is gated on `len(all_probs) == 7`. The paper's planned model is a transfer-learned **4-class** model (Understand/Doubt/Neutral/Disgust). Swapping it in would silently skip all expression logic until the 7→4 mapping in `attention_rules.py` is replaced.
 - **Status-text colors**: the color comes from a tone (`info` / `success` / `warning` / `danger` / `muted`) sent alongside the text, never from the text itself. `SPATIAL_STATE_TONES` in `camera_thread.py` maps each spatial state to a tone, and `MonitorInterface.STATUS_TONE_STYLES` maps each tone to a color. Status strings are display-only Japanese and can be reworded freely. `show_async_alert` uses error styling only when the alert title contains `CRITICAL`.
 - **Alert rate limiting**: all alert types share one `last_alert_time` cooldown.
 - **Thread lifetime**: `CameraThread.stop()` sets the run flag and calls `wait()`. `MainWindow.closeEvent` also stops the thread, so keep `camera_thread` as the attribute name on `MonitorInterface`.
-- **Report page**: `ReportInterface` is still a placeholder (#5). Session data is persisted in SQLite (see above) but not yet read by the report (`load_session_data` / `render_charts` are stubs).
+- **Report page**: the page reads only through `ReportBridge`'s JSON (`app/report_data.py`). Fields the page uses are named after the DB columns, so renaming a column means updating `report.js` as well.

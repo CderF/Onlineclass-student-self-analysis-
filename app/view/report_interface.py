@@ -1,119 +1,111 @@
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFrame, QLabel
-from qfluentwidgets import (
-    CardWidget, TitleLabel, SubtitleLabel, BodyLabel, 
-    IconWidget, FluentIcon as FIF, ScrollArea
-)
+import json
+from pathlib import Path
+from typing import Any, Callable, List, Optional
 
-class StatCard(CardWidget):
+from PyQt5.QtCore import QObject, QUrl, Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtWebChannel import QWebChannel
+from PyQt5.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
+from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineProfile, QWebEngineView
+from PyQt5.QtWidgets import QVBoxLayout, QWidget
+
+from app import report_data, session_store
+from app.session_store import PathLike
+
+WEB_DIR = Path(__file__).resolve().parent / "web"
+LOCAL_SCHEMES = {"file", "qrc", "data"}
+
+
+class ReportBridge(QObject):
     """
-    A reusable helper widget for displaying a single statistic.
-    Now just test
+    通过 QWebChannel 暴露给页面的 Python 对象（页面里为 bridge）。
+    槽在界面线程执行，每次调用用独立连接读库；返回 JSON 字符串 {"data": ..., "error": ...}。
     """
-    def __init__(self, icon, title, value, parent=None):
+    data_changed_signal = pyqtSignal()  # 课程记录可能有变化，页面应重新读取
+
+    def __init__(self, db_path: Optional[PathLike] = None, parent=None):
         super().__init__(parent)
-        self.hLayout = QHBoxLayout(self)
-        
-        self.iconWidget = IconWidget(icon, self)
-        self.iconWidget.setFixedSize(48, 48)
-        
-        self.textLayout = QVBoxLayout()
-        self.valueLabel = TitleLabel(value, self)
-        self.titleLabel = BodyLabel(title, self)
-        self.textLayout.addWidget(self.valueLabel)
-        self.textLayout.addWidget(self.titleLabel)
-        
-        self.hLayout.addWidget(self.iconWidget)
-        self.hLayout.addLayout(self.textLayout)
-        self.hLayout.addStretch(1)
-        self.hLayout.setContentsMargins(20, 15, 20, 15)
+        self.db_path = db_path  # None 表示使用 session_store.DEFAULT_DB_PATH
 
-class ReportInterface(ScrollArea):
+    def _respond(self, func: Callable, *args) -> str:
+        try:
+            conn = session_store.connect(self.db_path)
+            try:
+                data, error = func(conn, *args), None
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"❌ 报告页读取课程记录失败: {e}")
+            data, error = None, str(e)
+        return json.dumps({"data": data, "error": error}, ensure_ascii=False)
+
+    @pyqtSlot(result=str)
+    def list_sessions(self) -> str:
+        return self._respond(report_data.list_sessions)
+
+    @pyqtSlot(int, result=str)
+    def load_session(self, session_id: int) -> str:
+        return self._respond(report_data.load_session, session_id)
+
+
+class LocalOnlyInterceptor(QWebEngineUrlRequestInterceptor):
+    """报告页只允许加载本地资源，拦截一切网络请求（ADR 0001：离线可用、数据不外发）"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.blocked: List[str] = []
+
+    def interceptRequest(self, info: QWebEngineUrlRequestInfo) -> None:
+        url = info.requestUrl()
+        if url.scheme() not in LOCAL_SCHEMES:
+            self.blocked.append(url.toString())
+            info.block(True)
+
+
+class ReportPage(QWebEnginePage):
+    """把页面里的 console 输出转到终端，并记下 JS 错误（测试用）"""
+
+    def __init__(self, profile: QWebEngineProfile, parent=None):
+        super().__init__(profile, parent)
+        self.js_errors: List[str] = []
+
+    def javaScriptConsoleMessage(self, level, message, line, source):
+        print(f"[report.js] {message} ({source}:{line})")
+        if level == QWebEnginePage.ErrorMessageLevel:
+            self.js_errors.append(message)
+
+
+class ReportInterface(QWidget):
     """
-    The analysis and reporting page.
-    Displays session statistics and charts.
+    分析报告页：整页是本地 HTML（app/view/web/report.html），图表由 ECharts 绘制（ADR 0001）。
+    每次切换到本页时通知页面重新读取课程记录。
     """
-    
+
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.view = QWidget(self)
-        self.setWidget(self.view)
-        self.setWidgetResizable(True)
         self.setObjectName("report-interface")
-        
-        # --- Layouts ---
-        self.vBoxLayout = QVBoxLayout(self.view)
-        self.statsGridLayout = QGridLayout()
-        
-        # --- UI Components ---
-        
-        self.titleLabel = TitleLabel("学習分析", self.view)
-        self.subtitleLabel = BodyLabel("エンゲージメントの推移と学習履歴を振り返ります。", self.view)
-        
-        # 1. Summary Cards
-        self.cardTotalTime = StatCard(FIF.HISTORY, "合計学習時間", "0時間00分", self.view)
-        self.cardAvgScore = StatCard(FIF.HEART, "平均エンゲージメント", "0", self.view)
-        self.cardDistractions = StatCard(FIF.REMOVE, "注意散漫の回数", "0", self.view)
-        self.cardPeakTime = StatCard(FIF.HIGHTLIGHT, "最も集中した時間帯", "--:--", self.view)
 
-        # 2. Chart Placeholder
-        # In a real app, you would embed a Matplotlib canvas or PyQtGraph widget here.
-        self.chartContainer = CardWidget(self.view)
-        self.chartLayout = QVBoxLayout(self.chartContainer)
-        self.chartTitle = SubtitleLabel("エンゲージメントの推移", self.chartContainer)
-        
-        # Placeholder frame for the chart
-        self.chartFrame = QFrame(self.chartContainer)
-        self.chartFrame.setStyleSheet("background-color: rgba(0, 0, 0, 0.05); border-radius: 8px; border: 1px dashed #808080;")
-        self.chartFrame.setMinimumHeight(400)
-        self.chartLabel = QLabel("グラフ表示エリア（準備中）", self.chartFrame)
-        self.chartLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        chartFrameLayout = QVBoxLayout(self.chartFrame)
-        chartFrameLayout.addWidget(self.chartLabel)
-        
-        self.chartLayout.addWidget(self.chartTitle)
-        self.chartLayout.addSpacing(10)
-        self.chartLayout.addWidget(self.chartFrame)
-        self.chartLayout.setContentsMargins(20, 20, 20, 20)
+        self.webView = QWebEngineView(self)
+        self.profile = QWebEngineProfile()  # 无名称 = 不写磁盘缓存 / Cookie
+        self.interceptor = LocalOnlyInterceptor(self.profile)
+        self.profile.setUrlRequestInterceptor(self.interceptor)
+        self.page = ReportPage(self.profile, self.webView)
+        # profile 必须在页面之后释放（否则退出时崩溃）：作为页面的子对象，在页面析构完成后才被删除
+        self.profile.setParent(self.page)
+        self.page.setBackgroundColor(Qt.transparent)
+        self.webView.setPage(self.page)
+        self.webView.setContextMenuPolicy(Qt.NoContextMenu)
 
-        # --- Assembly ---
-        
-        self.vBoxLayout.addWidget(self.titleLabel)
-        self.vBoxLayout.addWidget(self.subtitleLabel)
-        self.vBoxLayout.addSpacing(20)
-        
-        # Add cards to grid
-        self.statsGridLayout.addWidget(self.cardTotalTime, 0, 0)
-        self.statsGridLayout.addWidget(self.cardAvgScore, 0, 1)
-        self.statsGridLayout.addWidget(self.cardDistractions, 1, 0)
-        self.statsGridLayout.addWidget(self.cardPeakTime, 1, 1)
-        self.statsGridLayout.setSpacing(20)
-        
-        self.vBoxLayout.addLayout(self.statsGridLayout)
-        self.vBoxLayout.addSpacing(20)
-        self.vBoxLayout.addWidget(self.chartContainer)
-        self.vBoxLayout.addStretch(1)
-        
-        # Style
-        self.vBoxLayout.setContentsMargins(30, 30, 30, 30)
-        self.setStyleSheet("background-color: transparent;") # Let window background show
+        self.bridge = ReportBridge(parent=self)
+        self.channel = QWebChannel(self)
+        self.channel.registerObject("bridge", self.bridge)
+        self.page.setWebChannel(self.channel)
 
-    # --- Placeholder Backend Methods ---
+        self.vBoxLayout = QVBoxLayout(self)
+        self.vBoxLayout.setContentsMargins(0, 0, 0, 0)
+        self.vBoxLayout.addWidget(self.webView)
 
-    def load_session_data(self, data: dict):
-        """
-        Populate the interface with data from a completed session.
-        """
-        print(f"Backend Hook: Loading data {data}")
-        # Example update:
-        # self.cardTotalTime.valueLabel.setText(data.get("duration", "0h 00m"))
-        # self.cardAvgScore.valueLabel.setText(f"{data.get('avg_score', 0)}%")
-        pass
+        self.webView.load(QUrl.fromLocalFile(str(WEB_DIR / "report.html")))
 
-    def render_charts(self):
-        """
-        Draw the graphs using the loaded data.
-        """
-        print("Backend Hook: Initializing Matplotlib figure here.")
-        pass
+    def showEvent(self, event: Any) -> None:
+        super().showEvent(event)
+        self.bridge.data_changed_signal.emit()

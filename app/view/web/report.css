@@ -1,0 +1,67 @@
+:root {
+  --accent: #009faa;
+  --text: #1a1a1a;
+  --text-secondary: #5f5f5f;
+  --card-bg: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.08);
+  --font: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+}
+
+body { padding: 30px; }
+
+h1 { margin: 0; font-size: 28px; font-weight: 600; }
+h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
+.lead { margin: 6px 0 20px; color: var(--text-secondary); }
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--card-border); margin-bottom: 20px; }
+.tabs button {
+  border: none;
+  background: none;
+  padding: 8px 16px;
+  font: inherit;
+  color: var(--text-secondary);
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+}
+.tabs button[aria-selected="true"] { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.toolbar select {
+  min-width: 320px;
+  padding: 6px 10px;
+  font: inherit;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: var(--card-bg);
+}
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin: 0 0 16px; }
+.stat { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 14px 18px; }
+.stat dt { color: var(--text-secondary); font-size: 12px; }
+.stat dd { margin: 4px 0 0; font-size: 20px; font-weight: 600; }
+
+.chart { width: 100%; height: 360px; }
+
+.message { padding: 40px 20px; text-align: center; color: var(--text-secondary); }
+.placeholder { color: var(--text-secondary); }
+
+/* 没有记录或读取失败时只显示提示 */
+body[data-state="empty"] .view,
+body[data-state="error"] .view { display: none; }

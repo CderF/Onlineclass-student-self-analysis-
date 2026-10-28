@@ -9,7 +9,7 @@ Project Type: Desktop GUI Application (PyQt5 + qfluentwidgets + YOLO/OpenCV).
   - `camera_thread.py`: `QThread` subclass for background video capture and processing.
   - `view/`: UI interface definitions.
     - `monitor_interface.py`: Real-time camera feed and attention monitoring tab.
-    - `report_interface.py`: Statistics and analysis reporting tab.
+    - `report_interface.py`: Analysis report tab (`QWebEngineView` + local HTML/ECharts in `web/`).
 - `runs/`, `weights/`: (Implied) Directories for YOLO models and inference results.
 
 ## 2. Build & Run Commands

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>分析レポート</title>
+  <link rel="stylesheet" href="report.css">
+  <script src="vendor/echarts/echarts.min.js"></script>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <script src="report.js" defer></script>
+</head>
+<body data-state="loading">
+  <header>
+    <h1>学習分析</h1>
+    <p class="lead">授業ごとのエンゲージメントの推移を振り返ります。</p>
+    <nav class="tabs" role="tablist">
+      <button type="button" role="tab" id="tab-single" data-view="single" aria-selected="true">授業ごと</button>
+      <button type="button" role="tab" id="tab-summary" data-view="summary" aria-selected="false">全体の推移</button>
+    </nav>
+  </header>
+
+  <main>
+    <p id="message" class="message" hidden></p>
+
+    <section id="view-single" class="view" role="tabpanel" aria-labelledby="tab-single">
+      <div class="toolbar">
+        <label for="session-select">授業</label>
+        <select id="session-select"></select>
+      </div>
+      <dl class="stats">
+        <div class="stat"><dt>日時</dt><dd id="stat-date">--</dd></div>
+        <div class="stat"><dt>受講時間</dt><dd id="stat-duration">--</dd></div>
+        <div class="stat"><dt>平均エンゲージメント</dt><dd id="stat-score">--</dd></div>
+        <div class="stat"><dt>記録の状態</dt><dd id="stat-status">--</dd></div>
+      </dl>
+      <div class="card">
+        <h2>エンゲージメントの推移</h2>
+        <div id="score-chart" class="chart"></div>
+      </div>
+    </section>
+
+    <section id="view-summary" class="view" role="tabpanel" aria-labelledby="tab-summary" hidden>
+      <div class="card">
+        <h2>全体の推移</h2>
+        <p class="placeholder">複数の授業の比較は準備中です。</p>
+        <p>記録された授業：<span id="session-count">0</span> 件</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

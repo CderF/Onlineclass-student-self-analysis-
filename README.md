@@ -116,7 +116,8 @@ self-analysis-system/
     └── view/
         ├── __init__.py     # 视图模块初始化
         ├── monitor_interface.py # 实时监控界面，基于 Fluent 组件，集成非阻塞异步 InfoBar
-        └── report_interface.py  # 学习统计报表界面，预留 Matplotlib/PyQtGraph 可视化图表接口
+        ├── report_interface.py  # 分析报告页：QWebEngineView 加载本地页面，QWebChannel 读取课程记录
+        └── web/            # 报告页的 HTML / CSS / JS 与本地 ECharts（离线，不走 CDN）
 ```
 
 ---
@@ -221,7 +222,7 @@ $$\text{Score}(t) = \text{Score}_{\text{before\_absent}} \cdot \left[1 - \left(\
 
 ## 🗺 未来规划与待办 (Roadmap)
 
-- [ ] **可视化报表深度编写**：在 `report_interface.py` 中引入 `pyqtgraph` 或 `matplotlib` 画布，实现 60 秒专注度曲线时序流图、疲劳分布饼图和专注热力图的实时渲染。
+- [ ] **可视化报表深度编写**：报告页已改用 Qt + ECharts（`docs/adr/0001-qt-echarts-report.md`），后续按 `docs/self-analysis-requirements.md` 实现单节课曲线、问题时段高亮与多节课汇总。
 - [ ] **高精度低头识别细化**：利用三维姿态角中的 Pitch 变动结合人脸面部网格纵向收缩比，构建更鲁棒的低头动作辨识分类器。
 - [ ] **情绪理解时序特征化**：将基于单帧的浅层特征分类器升级为时序行为识别，分析学生在 5~10 秒内的情绪转变轨迹，迈向长时序细粒度情感计算。
 - [ ] **更小模型的量化与微调**：对自建 RAF-DB 数据集训练出的表情模型进行 TensorRT / ONNX / CoreML 量化压缩，使轻量级 CPU 设备也能流畅保持 30FPS+ 的满帧率。

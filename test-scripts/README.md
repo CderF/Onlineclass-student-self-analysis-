@@ -9,3 +9,4 @@
 | 脚本 | 对应 Issue | 内容 |
 |---|---|---|
 | `verify_issue3_storage.py` | #3 | 真实分析器场景下的每秒汇总重算、SIGKILL 崩溃恢复、并发读写、90 分钟性能与体积 |
+| `verify_issue4_recording.py` | #4 | 原生平台真实窗口端到端（按钮、课程名对话框、暂停中关窗口）、时间轴核算、真实程序 SIGKILL 后重启；`--real-camera` 为人工验证模式 |

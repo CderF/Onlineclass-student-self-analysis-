@@ -14,7 +14,7 @@ class SessionRecorder:
     必须在 CameraThread.run() 内创建和使用：连接不跨线程。
     """
 
-    def __init__(self, session_id: int, start_wall: float, db_path: PathLike = session_store.DEFAULT_DB_PATH):
+    def __init__(self, session_id: int, start_wall: float, db_path: Optional[PathLike] = None):
         self.session_id = session_id
         self.conn = session_store.connect(db_path)
         self.start_wall = start_wall

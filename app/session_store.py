@@ -1,7 +1,7 @@
 """课程记录的 SQLite 存储（表结构见 docs/adr/0002-session-storage-schema.md）"""
 import sqlite3
 from pathlib import Path
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "self_analysis.db"
 SCHEMA_VERSION = 1
@@ -56,9 +56,9 @@ CREATE INDEX idx_pauses_session ON pauses(session_id, t);
 PathLike = Union[str, Path]
 
 
-def connect(db_path: PathLike = DEFAULT_DB_PATH) -> sqlite3.Connection:
-    """打开数据库；首次使用时建表。连接只能在创建它的线程内使用。"""
-    db_path = Path(db_path)
+def connect(db_path: Optional[PathLike] = None) -> sqlite3.Connection:
+    """打开数据库（默认 DEFAULT_DB_PATH，调用时解析，便于测试替换）；首次使用时建表。连接只能在创建它的线程内使用。"""
+    db_path = Path(db_path if db_path is not None else DEFAULT_DB_PATH)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
@@ -92,24 +92,56 @@ def set_baseline(conn: sqlite3.Connection, session_id: int, pitch: float, yaw: f
         )
 
 
-def finish_session(conn: sqlite3.Connection, session_id: int, ended_at: float) -> None:
-    """正常结束（Stop 或关闭窗口）"""
+def set_course_name(conn: sqlite3.Connection, session_id: int, name: Optional[str]) -> None:
+    """课程名去除首尾空白；空字符串视为未填写"""
+    name = (name or "").strip() or None
     with conn:
+        conn.execute("UPDATE sessions SET course_name = ? WHERE id = ?", (name, session_id))
+
+
+def list_course_names(conn: sqlite3.Connection) -> List[str]:
+    """已使用过的课程名，最近使用的在前"""
+    rows = conn.execute(
+        "SELECT course_name FROM sessions WHERE course_name IS NOT NULL"
+        " GROUP BY course_name ORDER BY MAX(started_at) DESC"
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def finish_session(conn: sqlite3.Connection, session_id: int, ended_at: float) -> bool:
+    """
+    正常结束（Stop 或关闭窗口）。一秒数据都没有的记录（如校准期内就终了）直接删除。
+    返回 True 表示记录被保留，False 表示因为是空记录而被删除。
+    """
+    with conn:
+        if _is_empty(conn, session_id):
+            conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            return False
         conn.execute(
             "UPDATE sessions SET status = 'completed', ended_at = ? WHERE id = ? AND status = 'recording'",
             (ended_at, session_id),
         )
+    return True
+
+
+def _is_empty(conn: sqlite3.Connection, session_id: int) -> bool:
+    return conn.execute("SELECT 1 FROM samples WHERE session_id = ? LIMIT 1", (session_id,)).fetchone() is None
 
 
 def mark_interrupted_sessions(conn: sqlite3.Connection) -> int:
     """
     程序启动时调用：仍为 recording 的记录是崩溃遗留，改为 interrupted。
     遗留的未关闭事件在最后一条每秒样本的末尾关闭；ended_at 取最后一条样本的墙上时间。
-    返回处理的记录数。
+    没有任何数据的遗留记录直接删除。返回标记为 interrupted 的记录数。
     """
     rows = conn.execute("SELECT id FROM sessions WHERE status = 'recording'").fetchall()
+    marked = 0
     with conn:
         for (session_id,) in rows:
+            if _is_empty(conn, session_id):
+                conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+                continue
+            marked += 1
             last = conn.execute(
                 "SELECT t, wall_time FROM samples WHERE session_id = ? ORDER BY t DESC LIMIT 1",
                 (session_id,),
@@ -124,4 +156,4 @@ def mark_interrupted_sessions(conn: sqlite3.Connection) -> int:
                 "UPDATE sessions SET status = 'interrupted', ended_at = COALESCE(?, started_at) WHERE id = ?",
                 (last_wall, session_id),
             )
-    return len(rows)
+    return marked

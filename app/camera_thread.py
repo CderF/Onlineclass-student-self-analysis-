@@ -1,8 +1,10 @@
 import cv2
 import time
 import numpy as np
+from app import session_store
 from app.attention_rules import AttentionAnalyzer
 from app.mediapipe_inference import FaceMeshInference
+from app.session_recorder import SessionRecorder
 from app.yolo_inference import ExpressionClassifier
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QImage, QPixmap
@@ -21,10 +23,18 @@ class CameraThread(QThread):
     update_status_signal = pyqtSignal(str, str)  # (状态文字, 语气: info / success / warning / danger / muted)
     alert_signal = pyqtSignal(str, str)
 
-    def __init__(self):
+    def __init__(self, db_path=None):
         super().__init__()
         self._run_flag = True
         self.draw_mesh = True
+
+        # 课程记录（docs/adr/0002）：摄像头首次成功打开时建立，校准结束后开始写入
+        self.db_path = db_path if db_path is not None else session_store.DEFAULT_DB_PATH
+        self.session_id = None
+        self.recorder = None  # 只在 run() 线程内创建和使用
+        self._pausing = False
+        self._session_finished = False
+        self._record_failed = False
 
         self.classifier = ExpressionClassifier()
         self.mediapipe = FaceMeshInference()
@@ -50,6 +60,8 @@ class CameraThread(QThread):
             return
 
         print("✅ 摄像头已打开，开始读取画面...")
+        if self.session_id is None:
+            self._guard_record(self._create_session)
 
         # 校准缓冲期所需变量 校准期为3秒 同时也是Yolo积累原始数据的期间
         """
@@ -62,6 +74,7 @@ class CameraThread(QThread):
         yaw_buffer = []
         if not is_calibrating:
             self.update_status_signal.emit("モニタリング中", "success")
+            self._guard_record(self._start_recording, time.time())
 
         while self._run_flag:
             ret, frame = cap.read()
@@ -130,6 +143,8 @@ class CameraThread(QThread):
                             self.is_calibrated = True
                             self.update_status_signal.emit("モニタリング中", "success")
                             score = 100
+                            self._guard_record(self._set_baseline)
+                            self._guard_record(self._start_recording, current_time)
                     else:
                         # 正式监控期：计算差值 (Delta)
                         delta_pitch = pitch - self.baseline_pitch if pitch is not None else None
@@ -153,6 +168,9 @@ class CameraThread(QThread):
                             _, alert_title, alert_msg = result.alert
                             self.alert_signal.emit(alert_title, alert_msg)
 
+                        if self.recorder is not None:
+                            self._guard_record(self.recorder.add_frame, result, current_time)
+
                     # 发射 UI 更新信号
                     self.update_score_signal.emit(score)
 
@@ -166,18 +184,78 @@ class CameraThread(QThread):
                     print(f"❌ 后台处理帧时发生异常: {e}")
 
         cap.release()
+        if self.recorder is not None:
+            # 暂停：记下暂停点；结束：只写完剩余数据，「正常结束」由 stop() 在调用方线程标记
+            end = self.recorder.pause if self._pausing else self.recorder.close
+            self._guard_record(end, time.time())
+            self.recorder = None
         print("后台线程已安全退出。")
 
     def stop(self):
+        """结束本次课程记录（运行中或暂停中都可调用，可重复调用）"""
+        self._pausing = False
         self._run_flag = False
         self.wait()
+        self._finish_session()
 
     def pause(self):
         """暂停：结束采集循环并释放摄像头"""
-        self.stop()
+        self._pausing = True
+        self._run_flag = False
+        self.wait()
 
     def resume(self):
         """继续：重新打开摄像头；滑动窗口与计时器全部清空，校准基准保留"""
         self.analyzer = AttentionAnalyzer()
+        self._pausing = False
         self._run_flag = True
         self.start()
+
+    # --- 课程记录 ---
+
+    def _create_session(self):
+        conn = session_store.connect(self.db_path)
+        try:
+            self.session_id = session_store.create_session(conn, time.time())
+        finally:
+            conn.close()
+
+    def _set_baseline(self):
+        if self.session_id is None:
+            return
+        conn = session_store.connect(self.db_path)
+        try:
+            session_store.set_baseline(conn, self.session_id, self.baseline_pitch, self.baseline_yaw)
+        finally:
+            conn.close()
+
+    def _start_recording(self, start_wall: float):
+        if self.session_id is not None:
+            self.recorder = SessionRecorder(self.session_id, start_wall, self.db_path)
+
+    def _finish_session(self):
+        if self.session_id is None or self._session_finished:
+            return
+        self._session_finished = True
+        try:
+            conn = session_store.connect(self.db_path)
+            try:
+                if not session_store.finish_session(conn, self.session_id, time.time()):
+                    print("ℹ️ 本次没有记录到任何数据，已删除空的课程记录")
+                    self.session_id = None  # 界面据此不再询问课程名
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"❌ 结束课程记录失败: {e}")
+
+    def _guard_record(self, func, *args):
+        """记录出错不影响实时监控：停止本次记录并提示一次"""
+        if self._record_failed:
+            return
+        try:
+            func(*args)
+        except Exception as e:
+            print(f"❌ 课程记录写入失败，本次课程将不再记录: {e}")
+            self._record_failed = True
+            self.recorder = None
+            self.alert_signal.emit("記録エラー", "学習データを保存できませんでした。モニタリングは続行しますが、この授業は記録されません。")

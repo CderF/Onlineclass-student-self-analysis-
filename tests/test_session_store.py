@@ -56,10 +56,17 @@ def test_connect_rejects_newer_schema(db):
         session_store.connect(db)
 
 
-def test_session_lifecycle(conn):
+def record_one_second(db, sid, wall=T0):
+    rec = SessionRecorder(sid, wall, db)
+    rec.add_frame(frame(), wall)
+    rec.close(wall + 0.5)
+
+
+def test_session_lifecycle(conn, db):
     sid = session_store.create_session(conn, T0)
     session_store.set_baseline(conn, sid, -4.5, 2.0)
-    session_store.finish_session(conn, sid, T0 + 60)
+    record_one_second(db, sid)
+    assert session_store.finish_session(conn, sid, T0 + 60) is True
     row = conn.execute("SELECT * FROM sessions WHERE id = ?", (sid,)).fetchone()
     assert (row["status"], row["ended_at"], row["baseline_pitch"], row["baseline_yaw"]) == ("completed", T0 + 60, -4.5, 2.0)
     assert row["course_name"] is None
@@ -188,7 +195,9 @@ def test_crash_keeps_committed_data_and_marks_interrupted(db):
         rec.add_frame(frame(spatial="away" if i >= 15 else "normal"), T0 + i * 0.1)
     del rec  # 模拟进程崩溃，未提交的第 2 秒丢失
     done = session_store.create_session(c, T0)
+    record_one_second(db, done)
     session_store.finish_session(c, done, T0 + 5)
+    empty_leftover = session_store.create_session(c, T0)  # 崩溃时还在校准期：没有任何数据
     c.close()
 
     c = session_store.connect(db)  # 下次启动
@@ -199,6 +208,7 @@ def test_crash_keeps_committed_data_and_marks_interrupted(db):
     (ev,) = events(c, sid, "spatial")
     assert ev["t_end"] == 2.0  # 在最后一条样本末尾关闭
     assert c.execute("SELECT status FROM sessions WHERE id = ?", (done,)).fetchone()["status"] == "completed"
+    assert c.execute("SELECT 1 FROM sessions WHERE id = ?", (empty_leftover,)).fetchone() is None  # 空的遗留记录被删除
     assert session_store.mark_interrupted_sessions(c) == 0
     c.close()
 
@@ -213,3 +223,13 @@ def test_deleting_session_cascades(conn, db):
     for table in ("samples", "events", "pauses"):
         assert conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
 
+
+
+def test_finish_deletes_empty_session(conn, db):
+    sid = session_store.create_session(conn, T0)
+    session_store.set_baseline(conn, sid, 0.0, 0.0)
+    rec = SessionRecorder(sid, T0, db)
+    rec.pause(T0 + 1)  # 只有暂停点，没有任何每秒数据
+    assert session_store.finish_session(conn, sid, T0 + 2) is False
+    for table in ("sessions", "pauses"):
+        assert conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0

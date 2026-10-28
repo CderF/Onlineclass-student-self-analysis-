@@ -1,9 +1,9 @@
-import os
 import time
 
 import pytest
 
 from app.camera_thread import SPATIAL_STATE_TONES
+from tests.conftest import needs_weights
 
 BLUE, RED, GREEN, ORANGE, GRAY = "#3B82F6", "#EF4444", "#10B981", "#F59E0B", "#808080"
 
@@ -38,33 +38,12 @@ def test_mesh_switch_labels(monitor):
     assert monitor.meshSwitch.text == "顔メッシュ：非表示"
 
 
-@pytest.mark.skipif(not os.path.exists("weights/best.pt"), reason="需要本地权重 weights/best.pt")
-def test_pause_resume_keeps_calibration_and_clears_windows(monitor, monkeypatch):
-    import cv2
-    import ultralytics
+@needs_weights
+def test_pause_resume_keeps_calibration_and_clears_windows(monitor, fake_camera, monkeypatch):
     from PyQt5.QtTest import QTest
 
-    import app.camera_thread as ct
-
-    img = cv2.imread(os.path.join(os.path.dirname(ultralytics.__file__), "assets", "zidane.jpg"))[0:400, 800:1200]
-    opened = []
-
-    class FakeCapture:
-        def __init__(self, index):
-            self.open = True
-            opened.append(self)
-
-        def isOpened(self):
-            return self.open
-
-        def read(self):
-            time.sleep(0.03)
-            return True, img.copy()
-
-        def release(self):
-            self.open = False
-
-    monkeypatch.setattr(ct.cv2, "VideoCapture", FakeCapture)
+    monkeypatch.setattr(monitor, "_ask_course_name", lambda names: None)
+    opened = fake_camera.instances
     statuses = []
 
     monitor._on_start_clicked()

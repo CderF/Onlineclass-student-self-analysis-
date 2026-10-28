@@ -61,11 +61,10 @@ class MainWindow(FluentWindow):
         重写窗口关闭事件。
         确保在用户点击右上角关闭程序时，后台摄像头线程被安全释放。
         """
-        # 注意这里也全改成了 camera_thread
-        if hasattr(self.monitorInterface, 'camera_thread') and self.monitorInterface.camera_thread.isRunning():
+        # 暂停中（线程未运行）关闭窗口也要调用 stop()，课程记录才会被标记为正常结束
+        if hasattr(self.monitorInterface, 'camera_thread'):
             print("正在安全释放摄像头资源...")
-            self.monitorInterface.camera_thread.stop()
-            self.monitorInterface.camera_thread.wait()  # 等待线程彻底结束
+            self.monitorInterface.camera_thread.stop()  # 内部会等待线程彻底结束
 
         # 接受关闭事件，正常退出程序
         event.accept()

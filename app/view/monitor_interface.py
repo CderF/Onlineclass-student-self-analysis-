@@ -1,3 +1,5 @@
+from typing import List, Optional
+
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QApplication
 from PyQt5.QtGui import QPixmap, QColor
@@ -7,7 +9,9 @@ from qfluentwidgets import (
     setTheme, Theme, InfoBar, InfoBarPosition
 )
 
+from app import session_store
 from app.camera_thread import CameraThread
+from app.view.course_name_dialog import CourseNameDialog
 
 
 class MonitorInterface(QWidget):
@@ -19,6 +23,7 @@ class MonitorInterface(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setObjectName("monitor-interface")
+        self.db_path = None  # None 表示使用 session_store.DEFAULT_DB_PATH；测试时可替换
 
         # --- Layouts ---
         self.vBoxLayout = QVBoxLayout(self)
@@ -172,7 +177,7 @@ class MonitorInterface(QWidget):
         self.scoreLabel.setStyleSheet("color: #808080;")
 
         # 变更为 camera_thread
-        self.camera_thread = CameraThread()
+        self.camera_thread = CameraThread(db_path=self.db_path)
 
         self.camera_thread.set_draw_mesh(self.meshSwitch.isChecked())
 
@@ -216,10 +221,35 @@ class MonitorInterface(QWidget):
         self.pauseBtn.setEnabled(False)
         self.stopBtn.setEnabled(False)
         self._set_paused(False)
-        self.videoLabel.setText("カメラ停止中")
-        self.update_attention_level(0)
-        self.update_status_text("停止しました", "muted")
 
         # 变更为 camera_thread
         if hasattr(self, 'camera_thread'):
             self.camera_thread.stop()
+        # 与暂停相同：等线程结束前发出的画面/状态信号处理完，再显示停止状态并询问课程名
+        QTimer.singleShot(0, self._after_stop)
+
+    def _after_stop(self):
+        self.videoLabel.clear()
+        self.videoLabel.setText("カメラ停止中")
+        self.update_attention_level(0)
+        self.update_status_text("停止しました", "muted")
+
+        thread = getattr(self, 'camera_thread', None)
+        session_id = getattr(thread, 'session_id', None)
+        if session_id is None:
+            return  # 摄像头未能打开，或没有记录到数据（空记录已删除）
+        try:
+            conn = session_store.connect(thread.db_path)  # 与本次采集写入的是同一个数据库
+            try:
+                name = self._ask_course_name(session_store.list_course_names(conn))
+                if name is not None:
+                    session_store.set_course_name(conn, session_id, name)
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"❌ 保存课程名失败: {e}")
+
+    def _ask_course_name(self, course_names: List[str]) -> Optional[str]:
+        """弹出课程名对话框；跳过时返回 None"""
+        dialog = CourseNameDialog(course_names, self.window())
+        return dialog.course_name() if dialog.exec() else None

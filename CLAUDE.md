@@ -17,10 +17,12 @@ Research prototype for a paper (student self-analysis of engagement in online cl
 - Run: `python main.py` **from the repo root**. `ExpressionClassifier` loads `weights/best.pt` via a cwd-relative path.
 - Weights are not in git (`weights/*.pt`, `*.dat`, `*.onnx` are ignored). `weights/best.pt` must exist locally; if loading fails, the classifier sets `model = None` and silently returns no probabilities.
 - Every issue ships with tests, starting from #4: pytest in `tests/`, plus dedicated verification scripts in `test-scripts/` (`verify_issue<N>_*.py`; see its README) for what pytest can't simulate well: real crashes, concurrency, long runs, performance.
-- Tests: run `python -m pytest` from the repo root (`tests/`, about 10 s). `conftest.py` sets `QT_QPA_PLATFORM=offscreen`, puts the repo root on `sys.path`, and `chdir`s there. There is no linter; `python -m py_compile <files>` is the syntax check. Patterns used in the tests:
+- Tests: run `python -m pytest` from the repo root (`tests/`, about 70 s; the `CameraThread` flow tests account for most of it and are skipped without `weights/best.pt`). `conftest.py` sets `QT_QPA_PLATFORM=offscreen`, puts the repo root on `sys.path`, and `chdir`s there. There is no linter; `python -m py_compile <files>` is the syntax check. Patterns used in the tests:
   - Patch `attention_rules.time.time` with a fake clock to drive `AttentionAnalyzer.process_frame` through simulated seconds (`tests/test_attention_rules.py`). `attention_rules.time` is the global `time` module, so this patches `time.time` process-wide. Use `monkeypatch`, or save the real function before patching and restore it afterwards.
   - Patch `camera_thread.cv2.VideoCapture` with a fake camera to run `CameraThread` headless (`tests/test_monitor_interface.py`). That test is skipped when `weights/best.pt` is missing.
-  - Face images: `ultralytics/assets/zidane.jpg` works if cropped to a close-up face (`[0:400, 800:1200]`; FaceMesh misses small faces).
+  - Face images: `ultralytics/assets/zidane.jpg` works if cropped to a close-up face (`[0:400, 800:1200]`; FaceMesh misses small faces). Use the shared `fake_camera` fixture in `conftest.py`; setting `show_face=False` simulates leaving the seat.
+  - `MainWindow` (a `FluentWindow`) **segfaults under `QT_QPA_PLATFORM=offscreen` on macOS**, because qframelesswindow calls Cocoa directly. In pytest, test `MonitorInterface` directly, or call `MainWindow.closeEvent` on a stub. Real-window checks go in `test-scripts/` with the native platform.
+  - `QTest.keyClicks` cannot type non-ASCII text. Set Japanese text directly on the widget.
 
 ## Per-frame pipeline (spans `camera_thread.py` → `mediapipe_inference.py` → `yolo_inference.py` → `attention_rules.py`)
 
@@ -47,6 +49,14 @@ Research prototype for a paper (student self-analysis of engagement in online cl
 - `app/session_recorder.py`: `SessionRecorder` takes one `AnalysisResult` per frame and writes one `samples` row per second of the **listening timeline** (`t`; pauses excluded, calibration excluded). It also writes `events` (frame-precise spatial-state intervals and alerts) and `pauses`. It commits once per completed second.
 - Create one `SessionRecorder` per capture segment, inside `CameraThread.run()`: sqlite connections are thread-bound. On `pause(wall)`, it records a pause row. On the next construction it resumes from the next whole second after the pause.
 - Spatial-state codes and cognitive-state labels are persisted. Renaming them requires a data migration.
+- Wiring (#4), all in `CameraThread`:
+  - The session row is created when the camera first opens.
+  - The recorder starts at calibration end, or at resume.
+  - When `run()` exits, it either `pause()`s or `close()`s the recorder.
+  - `stop()` then marks the session `completed` from the caller's thread, and is safe to call while paused. A session with no `samples` rows is deleted instead (`finish_session` returns `False`) and `session_id` is reset, so no course-name dialog appears. `mark_interrupted_sessions` deletes empty crash leftovers the same way.
+  - `MainWindow.closeEvent` always calls `stop()`, which also completes a paused session.
+  - Recording errors go through `_guard_record`: monitoring continues and a single 記録エラー alert is shown.
+- After Stop, `MonitorInterface._after_stop` asks for the course name. In tests, patch `_ask_course_name`. `MonitorInterface.db_path` / `CameraThread(db_path=)` override the DB, and `tests/conftest.py` redirects `DEFAULT_DB_PATH` to a temp file for every test.
 
 ## Cross-file couplings to watch
 
@@ -54,4 +64,4 @@ Research prototype for a paper (student self-analysis of engagement in online cl
 - **Status-text colors**: the color comes from a tone (`info` / `success` / `warning` / `danger` / `muted`) sent alongside the text, never from the text itself. `SPATIAL_STATE_TONES` in `camera_thread.py` maps each spatial state to a tone, and `MonitorInterface.STATUS_TONE_STYLES` maps each tone to a color. Status strings are display-only Japanese and can be reworded freely. `show_async_alert` uses error styling only when the alert title contains `CRITICAL`.
 - **Alert rate limiting**: all alert types share one `last_alert_time` cooldown.
 - **Thread lifetime**: `CameraThread.stop()` sets the run flag and calls `wait()`. `MainWindow.closeEvent` also stops the thread, so keep `camera_thread` as the attribute name on `MonitorInterface`.
-- **Report page**: `ReportInterface` is a placeholder. Session data is not persisted or passed to it yet (`load_session_data` / `render_charts` are stubs).
+- **Report page**: `ReportInterface` is still a placeholder (#5). Session data is persisted in SQLite (see above) but not yet read by the report (`load_session_data` / `render_charts` are stubs).

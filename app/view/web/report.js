@@ -4,7 +4,6 @@
 
 const STATUS_LABELS = { recording: "記録中", completed: "終了", interrupted: "中断" };
 const FONT = getComputedStyle(document.documentElement).getPropertyValue("--font");
-const ACCENT = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
 
 const state = { bridge: null, sessions: [], selectedId: null, chart: null, refreshSeq: 0 };
 
@@ -58,26 +57,7 @@ function renderSession(record) {
   if (!state.chart) {
     state.chart = echarts.init($("score-chart"));
   }
-  state.chart.setOption({
-    textStyle: { fontFamily: FONT },
-    grid: { left: 48, right: 24, top: 16, bottom: 64 },
-    tooltip: {
-      trigger: "axis",
-      valueFormatter: (v) => String(Math.round(v)),
-    },
-    xAxis: { type: "value", name: "分", min: 0, max: "dataMax" },
-    yAxis: { type: "value", min: 0, max: 100 },
-    dataZoom: [{ type: "inside" }, { type: "slider", height: 20, bottom: 12 }],
-    series: [{
-      name: "エンゲージメント",
-      type: "line",
-      showSymbol: false,
-      sampling: "lttb",
-      lineStyle: { color: ACCENT, width: 1.5 },
-      itemStyle: { color: ACCENT },
-      data: record.samples.map((x) => [x.t / 60, x.score]),
-    }],
-  }, true);
+  state.chart.setOption(SessionChart.buildOption(record, FONT, state.chart), true);
 }
 
 async function loadSelected(seq) {

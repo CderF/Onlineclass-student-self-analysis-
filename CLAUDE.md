@@ -23,6 +23,7 @@ Research prototype for a paper (student self-analysis of engagement in online cl
   - Face images: `ultralytics/assets/zidane.jpg` works if cropped to a close-up face (`[0:400, 800:1200]`; FaceMesh misses small faces). Use the shared `fake_camera` fixture in `conftest.py`; setting `show_face=False` simulates leaving the seat.
   - `MainWindow` (a `FluentWindow`) **segfaults under `QT_QPA_PLATFORM=offscreen` on macOS**, because qframelesswindow calls Cocoa directly. In pytest, test `MonitorInterface` directly, or call `MainWindow.closeEvent` on a stub. Real-window checks go in `test-scripts/` with the native platform.
   - `QTest.keyClicks` cannot type non-ASCII text. Set Japanese text directly on the widget.
+  - Mouse input to the report page inside `MainWindow`: `QTest.mouseMove` moves the OS cursor and never reaches the page. Send `QMouseEvent` / `QWheelEvent` to `webView.focusProxy()` with `QApplication.sendEvent` (`test-scripts/verify_issue6_session_chart.py`).
 
 ## Per-frame pipeline (spans `camera_thread.py` → `mediapipe_inference.py` → `yolo_inference.py` → `attention_rules.py`)
 
@@ -64,6 +65,8 @@ Research prototype for a paper (student self-analysis of engagement in online cl
 - Data path: `report.js` calls slots on `ReportBridge` over `QWebChannel` (`qrc:///qtwebchannel/qwebchannel.js`). Each slot opens its own connection in the UI thread, reads via `app/report_data.py` (`list_sessions`, `load_session`), and returns `{"data": ..., "error": ...}` as a JSON string.
 - `ReportInterface.showEvent` emits `data_changed_signal`; the page then reloads the list. If a new record appeared it selects the newest one, otherwise it keeps the current selection. `body[data-state]` is `loading` / `ready` / `empty` / `error`.
 - The page uses its own off-the-record `QWebEngineProfile` with `LocalOnlyInterceptor`, which blocks every non-`file`/`qrc`/`data` request (`interceptor.blocked` records them). `ReportPage.js_errors` collects console errors.
+- Single-session chart (#6): `app/view/web/session_chart.js` (`window.SessionChart`). One ECharts instance with four grids sharing the listening timeline in minutes: score, fatigue index, a cognitive-state band, and spatial-state rows (3 groups, one row each) plus alerts. Pauses are dashed `markLine`s in every grid. The data transforms (`cognitiveRuns`, `spatialIntervals`, `describeSecond`, ...) are pure functions that tests call through `runJavaScript`. Display labels for spatial states and alert types live there. A new spatial-state code or alert type must be added to `SPATIAL_GROUPS` / `ALERT_LABELS`; otherwise it is not drawn, or shows its raw code.
+- Tooltip time comes from an invisible per-second series (`__time__`). Custom-series bars snap `axisValue` to the bar start, and the category y-axes have `triggerTooltip: false`, otherwise the tooltip reports the row name. Colors were checked with the dataviz palette validator.
 - The profile is a child of the page so it is released after the page. A `ReportInterface` still alive at interpreter exit (e.g. a pending `deleteLater` in tests) crashes WebEngine, so tests destroy it with `sip.delete`. Pages may be polled before `<body>` exists: use `document.body && ...`.
 
 ## Cross-file couplings to watch

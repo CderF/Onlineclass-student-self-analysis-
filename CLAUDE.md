@@ -76,6 +76,10 @@ Research prototype for a paper (student self-analysis of engagement in online cl
   - `app/view/web/summary_chart.js` (`window.SummaryChart`) draws three grids over a category axis (one entry per session): average score, listening minutes, and problem share. Problem shares are grouped bars, not stacked, because categories can overlap; each bar is that category's seconds / listening seconds, capped at 100.
   - Interrupted or recording sessions get a hollow point and a third label line.
   - Clicking a column opens that session in 授業ごと (`openSession`). The course filter and the course-table rows share `filterKey` (`all` / `none` / `name:<course>`). `body[data-summary]` is `loading` / `ready` / `error`.
+- Text feedback (#9): `app/feedback.py`. `report_data.load_session` returns `feedback` (`None` when there are no samples). The page renders it as the フィードバック card above the chart; clicking a 気になった時間帯 item zooms the chart to that segment ±30 s.
+  - Swappable: `build_context` assembles a pure-data `FeedbackContext` (score, problems, spatial events, earlier same-course averages), and `feedback.GENERATOR.generate(ctx)` returns `{summary, segments, more, hints, comparison, generator}`. A future LLM generator only has to implement `generate`.
+  - Thresholds live in `FeedbackConfig`. All wording lives in `RuleFeedbackGenerator` and the `SEGMENT_TEXT` / `HINT_TEXT` dicts.
+  - `test-scripts/verify_issue9_feedback.py` writes `feedback_samples.txt` for reviewing the wording.
 - Tooltip time comes from an invisible per-second series (`__time__`). Custom-series bars snap `axisValue` to the bar start, and the category y-axes have `triggerTooltip: false`, otherwise the tooltip reports the row name. Colors were checked with the dataviz palette validator.
 - The profile is a child of the page so it is released after the page. A `ReportInterface` still alive at interpreter exit (e.g. a pending `deleteLater` in tests) crashes WebEngine, so tests destroy it with `sip.delete`. Pages may be polled before `<body>` exists: use `document.body && ...`.
 

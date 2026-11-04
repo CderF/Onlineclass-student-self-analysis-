@@ -74,7 +74,7 @@ def test_load_session_full_record(db, conn):
     session_store.finish_session(conn, sid, T0 + 11)
 
     data = report_data.load_session(conn, sid)
-    assert set(data) == {"session", "samples", "events", "pauses", "problems"}
+    assert set(data) == {"session", "samples", "events", "pauses", "problems", "feedback"}
     assert data["session"]["baseline_pitch"] == -4.5 and data["session"]["seconds"] == 4
     assert [s["t"] for s in data["samples"]] == [0, 1, 2, 3]
     assert [s["score"] for s in data["samples"]] == [80, 40, 60, 90]

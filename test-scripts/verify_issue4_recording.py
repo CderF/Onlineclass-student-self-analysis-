@@ -26,10 +26,12 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)  # ExpressionClassifier 以相对路径加载 weights/best.pt
 
 failures = []
+# QApplication 保持到进程退出：随函数返回释放时，PyQt 清理偶发 SIGSEGV（#14）
+KEEP_ALIVE = []
 
 
 def check(name, cond, detail=""):
-    print(f"{'PASS' if cond else 'FAIL'}  {name}" + (f"  ({detail})" if detail else ""))
+    print(f"{'PASS' if cond else 'FAIL'}  {name}" + (f"  ({detail})" if detail else ""), flush=True)
     if not cond:
         failures.append(name)
 
@@ -89,6 +91,7 @@ def end_to_end(db: Path):
     from app.view.course_name_dialog import CourseNameDialog
 
     app = QApplication.instance() or QApplication(sys.argv)
+    KEEP_ALIVE.append(app)
     app.setFont(QFont("Hiragino Sans", 10))
     setFontFamilies(["Hiragino Sans", "Segoe UI"])
     w = main.MainWindow()
@@ -265,5 +268,5 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as d:
         end_to_end(Path(d) / "e2e.db")
         real_crash(Path(d) / "crash.db")
-    print("\nRESULT:", "ALL PASS" if not failures else f"{len(failures)} FAILED: {failures}")
-    sys.exit(1 if failures else 0)
+    print("\nRESULT:", "ALL PASS" if not failures else f"{len(failures)} FAILED: {failures}", flush=True)
+    os._exit(1 if failures else 0)  # 跳过解释器清理：PyQt 退出清理偶发 SIGSEGV（#14）

@@ -34,7 +34,27 @@
         <div class="stat"><dt>平均エンゲージメント</dt><dd id="stat-score">--</dd></div>
         <div class="stat"><dt>記録の状態</dt><dd id="stat-status">--</dd></div>
       </dl>
-      <div class="card">
+      <div class="card" id="feedback-card" hidden>
+        <h2>フィードバック</h2>
+        <section class="feedback-section">
+          <h3>総評</h3>
+          <p id="feedback-summary"></p>
+        </section>
+        <section class="feedback-section" id="feedback-segments-section">
+          <h3>気になった時間帯</h3>
+          <ul id="feedback-segments" class="feedback-list"></ul>
+          <p id="feedback-more" class="hint" hidden></p>
+        </section>
+        <section class="feedback-section">
+          <h3>次回へのヒント</h3>
+          <ul id="feedback-hints" class="feedback-list"></ul>
+        </section>
+        <section class="feedback-section" id="feedback-comparison-section">
+          <h3 id="feedback-comparison-title">前回との比較</h3>
+          <p id="feedback-comparison"></p>
+        </section>
+      </div>
+      <div class="card" id="chart-card">
         <h2>授業中の推移</h2>
         <div id="score-chart" class="chart"></div>
       </div>

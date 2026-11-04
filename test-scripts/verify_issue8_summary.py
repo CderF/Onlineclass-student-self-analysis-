@@ -28,6 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 os.chdir(ROOT)  # ExpressionClassifier 以相对路径加载 weights/best.pt
 
 failures = []
+# QApplication 保持到进程退出：随函数返回释放时，PyQt 清理偶发 SIGSEGV（#14）
+KEEP_ALIVE = []
 CATS = ("doubt", "fatigue", "distraction")
 DAY = 86400
 
@@ -167,6 +169,7 @@ def main(db: Path, perf_db: Path, shot_dir: Path):
     v4.install_fake_camera()
 
     app = QApplication.instance() or QApplication(sys.argv)
+    KEEP_ALIVE.append(app)
     app.setFont(QFont("Hiragino Sans", 10))
     setFontFamilies(["Hiragino Sans", "Segoe UI"])
     w = app_main.MainWindow()

@@ -61,6 +61,43 @@ function renderSession(record) {
     state.chart = echarts.init($("score-chart"));
   }
   state.chart.setOption(SessionChart.buildOption(record, FONT, state.chart), true);
+  renderFeedback(record.feedback);
+}
+
+// 文字反馈（#9，app/feedback.py 生成）；没有数据时不显示
+function renderFeedback(fb) {
+  $("feedback-card").hidden = !fb;
+  if (!fb) return;
+  $("feedback-summary").textContent = fb.summary;
+
+  $("feedback-segments-section").hidden = fb.segments.length === 0;
+  $("feedback-segments").replaceChildren(...fb.segments.map((seg) => {
+    const color = SessionChart.PROBLEMS.find((p) => p.key === seg.category).color;
+    const dot = Object.assign(document.createElement("span"), { className: "segment-dot" });
+    dot.style.background = color;
+    const link = Object.assign(document.createElement("button"), { type: "button", className: "segment-link" });
+    link.append(dot, seg.text);
+    link.addEventListener("click", () => zoomTo(seg.start, seg.end));
+    const li = document.createElement("li");
+    li.append(link);
+    return li;
+  }));
+  $("feedback-more").hidden = !fb.more;
+  $("feedback-more").textContent = fb.more ? `ほかに ${fb.more} か所あります（グラフで確認できます）。` : "";
+
+  $("feedback-hints").replaceChildren(...fb.hints.map((h) => Object.assign(document.createElement("li"), { textContent: h })));
+
+  $("feedback-comparison-section").hidden = !fb.comparison;
+  if (fb.comparison) {
+    $("feedback-comparison-title").textContent = `前回との比較（${fb.comparison.course_name}）`;
+    $("feedback-comparison").textContent = fb.comparison.text;
+  }
+}
+
+// 把曲线缩放到某一时段（前后各留 30 秒），并滚到图表处
+function zoomTo(start, end) {
+  state.chart.dispatchAction({ type: "dataZoom", startValue: Math.max(0, start - 30) / 60, endValue: (end + 30) / 60 });
+  $("chart-card").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function loadSelected(seq) {

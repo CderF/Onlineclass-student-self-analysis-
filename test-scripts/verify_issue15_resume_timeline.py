@@ -29,6 +29,8 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)  # ExpressionClassifier 以相对路径加载 weights/best.pt
 
 failures = []
+# QApplication 保持到进程退出：随函数返回释放时，PyQt 清理偶发 SIGSEGV（#14）
+KEEP_ALIVE = []
 
 
 def check(name, cond, detail=""):
@@ -135,7 +137,7 @@ def verify(db, sid, plan):
 
 def main():
     from PyQt5.QtWidgets import QApplication
-    app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841  必须保持引用，否则立即被回收
+    KEEP_ALIVE.append(QApplication.instance() or QApplication(sys.argv))
     camera = install_fake_camera()
     rng = random.Random(15)
     with tempfile.TemporaryDirectory() as d:

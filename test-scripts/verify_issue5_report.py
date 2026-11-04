@@ -30,11 +30,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 os.chdir(ROOT)  # ExpressionClassifier 以相对路径加载 weights/best.pt
 
 failures = []
+# QApplication 保持到进程退出：随函数返回释放时，PyQt 清理偶发 SIGSEGV（#14）
+KEEP_ALIVE = []
 ACCENT = (0x00, 0x9F, 0xAA)
 
 
 def check(name, cond, detail=""):
-    print(f"{'PASS' if cond else 'FAIL'}  {name}" + (f"  ({detail})" if detail else ""))
+    print(f"{'PASS' if cond else 'FAIL'}  {name}" + (f"  ({detail})" if detail else ""), flush=True)
     if not cond:
         failures.append(name)
 
@@ -166,6 +168,7 @@ def in_window(db: Path, shot_dir: Path):
     camera = v4.install_fake_camera()
 
     app = QApplication.instance() or QApplication(sys.argv)
+    KEEP_ALIVE.append(app)
     app.setFont(QFont("Hiragino Sans", 10))
     setFontFamilies(["Hiragino Sans", "Segoe UI"])
     w = main.MainWindow()
@@ -197,6 +200,8 @@ def in_window(db: Path, shot_dir: Path):
           f"{d['duration']} / {d['score']} / {d['status']}，数据库 {db_avg['n']} 秒、平均 {db_avg['a']:.1f}")
     check("曲线点数等于每秒样本数", d["points"] == db_avg["n"], f"{d['points']} 点")
     shot = shot_dir / "report_long_session.png"
+    run_js(report.page, "document.getElementById('score-chart').scrollIntoView({block: 'center'})")  # 上方有反馈卡片（#9）
+    QTest.qWait(300)
     image = w.grab().toImage()
     image.save(str(shot))
     pixels = accent_pixels(image)
@@ -304,5 +309,5 @@ if __name__ == "__main__":
         in_window(Path(d) / "window.db", shot_dir)
         real_exit(Path(d) / "exit.db")
     print(f"\n截图保存在：{shot_dir}")
-    print("\nRESULT:", "ALL PASS" if not failures else f"{len(failures)} FAILED: {failures}")
-    sys.exit(1 if failures else 0)
+    print("\nRESULT:", "ALL PASS" if not failures else f"{len(failures)} FAILED: {failures}", flush=True)
+    os._exit(1 if failures else 0)  # 跳过解释器清理：PyQt 退出清理偶发 SIGSEGV（#14）

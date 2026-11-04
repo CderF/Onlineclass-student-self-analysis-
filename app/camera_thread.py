@@ -22,6 +22,7 @@ class CameraThread(QThread):
     update_score_signal = pyqtSignal(int)
     update_status_signal = pyqtSignal(str, str)  # (状态文字, 语气: info / success / warning / danger / muted)
     alert_signal = pyqtSignal(str, str)
+    error_signal = pyqtSignal(str, str)  # 需要用户手动关闭的提示（模型加载失败，#12）
 
     def __init__(self, db_path=None):
         super().__init__()
@@ -36,8 +37,9 @@ class CameraThread(QThread):
         self._session_finished = False
         self._record_failed = False
 
-        self.classifier = ExpressionClassifier()
-        self.mediapipe = FaceMeshInference()
+        # 模型在 run() 内（后台线程）首次加载，暂停后继续时沿用（#12：不在界面线程加载）
+        self.classifier = None
+        self.mediapipe = None
         self.analyzer = AttentionAnalyzer()
 
         # 校准基准在整次课程记录内有效，暂停后继续时沿用，不重新校准
@@ -45,12 +47,36 @@ class CameraThread(QThread):
         self.baseline_pitch = 0.0
         self.baseline_yaw = 0.0
 
+    def _load_models(self) -> bool:
+        """
+        首次 run() 时加载 FaceMesh 与表情分类模型；之后（暂停后继续）沿用。
+        表情模型加载失败时提示并继续（不做表情判定，头部姿态与离席照常）；FaceMesh 失败时无法监控，返回 False。
+        """
+        if self.mediapipe is not None:
+            return True
+        try:
+            self.mediapipe = FaceMeshInference()
+        except Exception as e:
+            print(f"❌ FaceMesh 初始化失败: {e}")
+            self.update_status_signal.emit("モデルを読み込めません", "warning")
+            self.error_signal.emit("モデルエラー", "顔検出モデルを初期化できませんでした。アプリを再起動してください。")
+            return False
+        self.classifier = ExpressionClassifier()
+        if self.classifier.model is None:
+            self.error_signal.emit(
+                "モデルエラー",
+                "表情認識モデル（weights/best.pt）を読み込めませんでした。表情を使わずにモニタリングを続けます。",
+            )
+        return True
+
     def set_draw_mesh(self, state: bool):
         """控制是否绘制面部网格"""
         self.draw_mesh = state
 
     def run(self):
         print("后台线程已启动，尝试打开摄像头...")
+        if not self._load_models() or not self._run_flag:
+            return  # 无法监控，或加载期间已请求暂停 / 终了
         cap = cv2.VideoCapture(0)
 
         if not cap.isOpened():

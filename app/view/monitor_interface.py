@@ -160,6 +160,19 @@ class MonitorInterface(QWidget):
                 parent=self
             )
 
+    def show_persistent_alert(self, title: str, message: str):
+        """不会自动消失、需要手动关闭的提示（模型加载失败等，#12）"""
+        QApplication.beep()
+        InfoBar.warning(
+            title=title,
+            content=message,
+            orient=Qt.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP_RIGHT,
+            duration=-1,  # 小于 0：不自动消失
+            parent=self
+        )
+
 # ====== 新增：开关响应事件 ======
     def _on_mesh_switch_toggled(self, is_checked: bool):
         """实时将开关状态传递给正在运行的线程"""
@@ -185,6 +198,7 @@ class MonitorInterface(QWidget):
         self.camera_thread.update_score_signal.connect(self.update_attention_level)
         self.camera_thread.update_status_signal.connect(self.update_status_text)
         self.camera_thread.alert_signal.connect(self.show_async_alert)
+        self.camera_thread.error_signal.connect(self.show_persistent_alert)
 
         self.camera_thread.start()
 

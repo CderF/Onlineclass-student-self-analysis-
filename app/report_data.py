@@ -46,3 +46,62 @@ def load_session(conn: sqlite3.Connection, session_id: int) -> Optional[Dict[str
         "pauses": pauses,
         "problems": problem_segments.detect(samples, events, pauses),
     }
+
+
+def summarize_sessions(conn: sqlite3.Connection) -> Dict[str, Any]:
+    """
+    多节课汇总（#8）：sessions 为有听课数据的课程记录（按开始时间升序），附各类问题时段的次数与秒数；
+    courses 为按课程名分组的汇总（最近上课的在前）。
+    """
+    rows = conn.execute(
+        f"SELECT {SESSION_COLUMNS}, {SUMMARY_COLUMNS}"
+        " FROM sessions s JOIN samples x ON x.session_id = s.id"
+        " GROUP BY s.id ORDER BY s.started_at, s.id"
+    ).fetchall()
+    sessions = []
+    for r in rows:
+        problems = _problems(conn, r["id"])
+        stats = {c: {"count": 0, "seconds": 0.0} for c in problem_segments.CATEGORIES}
+        for p in problems:
+            stats[p["category"]]["count"] += 1
+            stats[p["category"]]["seconds"] += p["end"] - p["start"]
+        sessions.append({**dict(r), "problems": stats})
+    return {"sessions": sessions, "courses": course_summary(sessions)}
+
+
+def course_summary(sessions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """按课程名分组（未填写的为一组 None）；平均参与度按听课秒数加权，问题时段为合计秒数"""
+    groups: Dict[Optional[str], List[Dict[str, Any]]] = {}
+    for s in sessions:
+        groups.setdefault(s["course_name"], []).append(s)
+    courses = []
+    for name, items in groups.items():
+        seconds = sum(s["seconds"] for s in items)
+        courses.append({
+            "course_name": name,
+            "sessions": len(items),
+            "interrupted": sum(1 for s in items if s["status"] == "interrupted"),
+            "seconds": seconds,
+            "avg_score": sum(s["avg_score"] * s["seconds"] for s in items) / seconds,
+            "problems": {
+                c: {"count": sum(s["problems"][c]["count"] for s in items),
+                    "seconds": sum(s["problems"][c]["seconds"] for s in items)}
+                for c in problem_segments.CATEGORIES
+            },
+            "last_started_at": max(s["started_at"] for s in items),
+        })
+    courses.sort(key=lambda c: c["last_started_at"], reverse=True)
+    return courses
+
+
+def _problems(conn: sqlite3.Connection, session_id: int) -> List[Dict[str, Any]]:
+    """只读判定需要的列（汇总时每节课都要判定一次）"""
+    def fetch(sql: str) -> List[Dict[str, Any]]:
+        return [dict(r) for r in conn.execute(sql, (session_id,))]
+
+    return problem_segments.detect(
+        fetch("SELECT t, cognitive_state, fatigue_index FROM samples WHERE session_id = ? ORDER BY t"),
+        fetch("SELECT kind, type, t_start, t_end FROM events WHERE session_id = ? AND kind = 'spatial'"),
+        fetch("SELECT t FROM pauses WHERE session_id = ?"),
+    )
+

@@ -5,7 +5,10 @@
 const STATUS_LABELS = { recording: "記録中", completed: "終了", interrupted: "中断" };
 const FONT = getComputedStyle(document.documentElement).getPropertyValue("--font");
 
-const state = { bridge: null, sessions: [], selectedId: null, chart: null, refreshSeq: 0 };
+const state = {
+  bridge: null, sessions: [], selectedId: null, chart: null, refreshSeq: 0, view: "single",
+  summary: null, summaryShown: [], summaryChart: null, summarySeq: 0, courseFilter: "all",
+};
 
 const $ = (id) => document.getElementById(id);
 
@@ -93,16 +96,94 @@ async function refresh() {
     state.selectedId = state.sessions[0].id;
   }
   renderSessionList();
+  if (state.view === "summary") loadSummary();
   await loadSelected(seq);
 }
 
+// ---------- 全体の推移（#8） ----------
+
+async function loadSummary() {
+  const seq = ++state.summarySeq;
+  document.body.dataset.summary = "loading";
+  const res = await call("summarize_sessions");
+  if (seq !== state.summarySeq) return;
+  $("summary-message").hidden = !res.error;
+  if (res.error) {
+    $("summary-message").textContent = "データを読み込めませんでした。";
+    document.body.dataset.summary = "error";
+    return;
+  }
+  state.summary = res.data;
+  renderSummary();
+  document.body.dataset.summary = "ready";
+}
+
+function renderSummary() {
+  const { sessions, courses } = state.summary;
+  const keys = ["all", ...courses.map((c) => SummaryChart.filterKey(c.course_name))];
+  if (!keys.includes(state.courseFilter)) state.courseFilter = "all";
+  $("course-filter").replaceChildren(
+    new Option("すべて", "all"),
+    ...courses.map((c) => new Option(c.course_name || SummaryChart.NO_NAME, SummaryChart.filterKey(c.course_name))),
+  );
+  $("course-filter").value = state.courseFilter;
+
+  state.summaryShown = SummaryChart.filterSessions(sessions, state.courseFilter);
+  if (!state.summaryChart) {
+    state.summaryChart = echarts.init($("summary-chart"));
+    // 点击某一节课所在的列（任意一行）：切到「授業ごと」显示它
+    state.summaryChart.getZr().on("click", (e) => {
+      const chart = state.summaryChart;
+      for (let i = 0; i < 3; i++) {
+        if (chart.containPixel({ gridIndex: i }, [e.offsetX, e.offsetY])) {
+          const index = chart.convertFromPixel({ xAxisIndex: i }, e.offsetX);
+          const s = state.summaryShown[Math.round(index)];
+          if (s) openSession(s.id);
+          return;
+        }
+      }
+    });
+  }
+  state.summaryChart.setOption(SummaryChart.buildOption(state.summaryShown, FONT), true);
+  state.summaryChart.resize();
+
+  const headers = ["授業名", "回数", "平均エンゲージメント", "合計受講時間", ...SessionChart.PROBLEMS.map((p) => p.label)];
+  const head = document.createElement("tr");
+  head.replaceChildren(...headers.map((h) => Object.assign(document.createElement("th"), { textContent: h })));
+  $("course-table").tHead.replaceChildren(head);
+  $("course-table").tBodies[0].replaceChildren(...courses.map((c) => {
+    const row = SummaryChart.courseRow(c);
+    const tr = document.createElement("tr");
+    tr.dataset.key = row.key;
+    tr.setAttribute("aria-selected", String(row.key === state.courseFilter));
+    tr.replaceChildren(...[row.name, row.sessions, row.score, row.duration, ...row.problems]
+      .map((text) => Object.assign(document.createElement("td"), { textContent: text })));
+    tr.addEventListener("click", () => setCourseFilter(row.key === state.courseFilter ? "all" : row.key));
+    return tr;
+  }));
+}
+
+function setCourseFilter(key) {
+  state.courseFilter = key;
+  renderSummary();
+}
+
+function openSession(id) {
+  state.selectedId = id;
+  renderSessionList();
+  selectTab("single");
+  loadSelected(++state.refreshSeq);
+}
+
 function selectTab(view) {
+  state.view = view;
   for (const tab of document.querySelectorAll(".tabs button")) {
     tab.setAttribute("aria-selected", String(tab.dataset.view === view));
   }
   $("view-single").hidden = view !== "single";
   $("view-summary").hidden = view !== "summary";
   if (view === "single" && state.chart) state.chart.resize();
+  if (view === "summary") loadSummary();
 }
 
 for (const tab of document.querySelectorAll(".tabs button")) {
@@ -114,7 +195,12 @@ $("session-select").addEventListener("change", (e) => {
   loadSelected(++state.refreshSeq);
 });
 
-window.addEventListener("resize", () => state.chart && state.chart.resize());
+$("course-filter").addEventListener("change", (e) => setCourseFilter(e.target.value));
+
+window.addEventListener("resize", () => {
+  if (state.chart) state.chart.resize();
+  if (state.summaryChart) state.summaryChart.resize();
+});
 
 new QWebChannel(qt.webChannelTransport, (channel) => {
   state.bridge = channel.objects.bridge;

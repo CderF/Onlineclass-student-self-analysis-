@@ -7,6 +7,7 @@
   <script src="vendor/echarts/echarts.min.js"></script>
   <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
   <script src="session_chart.js" defer></script>
+  <script src="summary_chart.js" defer></script>
   <script src="report.js" defer></script>
 </head>
 <body data-state="loading">
@@ -40,10 +41,24 @@
     </section>
 
     <section id="view-summary" class="view" role="tabpanel" aria-labelledby="tab-summary" hidden>
+      <div class="toolbar">
+        <label for="course-filter">授業名</label>
+        <select id="course-filter"></select>
+        <span class="note">記録された授業：<span id="session-count">0</span> 件</span>
+      </div>
+      <p id="summary-message" class="message" hidden></p>
       <div class="card">
-        <h2>全体の推移</h2>
-        <p class="placeholder">複数の授業の比較は準備中です。</p>
-        <p>記録された授業：<span id="session-count">0</span> 件</p>
+        <h2>授業ごとの推移</h2>
+        <p class="hint">白抜きの点は中断した記録です。グラフをクリックすると、その授業を「授業ごと」で表示します。</p>
+        <div id="summary-chart" class="chart summary"></div>
+      </div>
+      <div class="card">
+        <h2>授業名別の集計</h2>
+        <table id="course-table" class="table">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+        <p class="hint">平均エンゲージメントは受講時間で重み付けした平均、問題時段は受講時間に占める合計時間の割合です。行をクリックすると、その授業名で絞り込みます。</p>
       </div>
     </section>
   </main>

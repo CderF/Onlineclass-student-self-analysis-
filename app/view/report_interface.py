@@ -46,6 +46,10 @@ class ReportBridge(QObject):
     def load_session(self, session_id: int) -> str:
         return self._respond(report_data.load_session, session_id)
 
+    @pyqtSlot(result=str)
+    def summarize_sessions(self) -> str:
+        return self._respond(report_data.summarize_sessions)
+
 
 class LocalOnlyInterceptor(QWebEngineUrlRequestInterceptor):
     """报告页只允许加载本地资源，拦截一切网络请求（ADR 0001：离线可用、数据不外发）"""

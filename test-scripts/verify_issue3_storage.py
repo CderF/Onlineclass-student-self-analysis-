@@ -88,10 +88,10 @@ def _scenario(db, conn, clock):
     alerts = 0
     for step in plan:
         if step[0] == "pause":
-            paused_t = seg_base + (clock[0] - seg_start)
+            paused_t = log[-1][0]  # ADR 0002：暂停点是最后一帧的听课时间
             recorder.pause(clock[0])
             clock[0] += step[1]
-            seg_base, seg_start = float(math.ceil(paused_t)), clock[0]  # ADR 0002：继续时从下一整秒开始
+            seg_base, seg_start = float(math.floor(paused_t) + 1), clock[0]  # 继续时从最后一秒的下一秒开始
             analyzer = AttentionAnalyzer()  # 与 CameraThread.resume 一致：窗口清空
             recorder = SessionRecorder(session_id, clock[0], db)
             continue

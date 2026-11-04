@@ -81,7 +81,8 @@ def test_load_session_full_record(db, conn):
     assert data["samples"][1]["spatial_state"] == "away" and data["samples"][1]["cognitive_state"] is None
     assert [(e["kind"], e["type"], e["t_start"], e["t_end"]) for e in data["events"]] == [
         ("spatial", "away", 1.0, 2.0), ("alert", "離席", 1.0, 1.0)]
-    assert data["pauses"] == [{"t": 2.5, "paused_at": T0 + 2.5, "resumed_at": T0 + 10}]
+    # 暂停点是最后一帧的听课时间（2.0），墙上时间为按下暂停的时刻
+    assert data["pauses"] == [{"t": 2.0, "paused_at": T0 + 2.5, "resumed_at": T0 + 10}]
     json.dumps(data, allow_nan=False)  # 能直接转成 JSON 交给页面
 
 

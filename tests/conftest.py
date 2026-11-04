@@ -34,14 +34,19 @@ needs_weights = pytest.mark.skipif(not HAS_WEIGHTS, reason="需要本地权重 w
 
 
 class FakeCapture:
-    """替代 cv2.VideoCapture：约 30 fps 返回人脸近景；show_face=False 时返回无人脸的黑画面"""
+    """
+    替代 cv2.VideoCapture：约 30 fps 返回人脸近景；show_face=False 时返回无人脸的黑画面。
+    reopen_delay：第二次及以后打开（暂停后继续）时，首帧前等待的秒数，模拟摄像头预热
+    """
     instances = []
     show_face = True
     can_open = True
+    reopen_delay = 0.0
     _face = None
 
     def __init__(self, index):
         self.open = FakeCapture.can_open
+        self.first_delay = FakeCapture.reopen_delay if FakeCapture.instances else 0.0
         FakeCapture.instances.append(self)
 
     @classmethod
@@ -59,7 +64,8 @@ class FakeCapture:
     def read(self):
         import time
         import numpy as np
-        time.sleep(0.03)
+        time.sleep(0.03 + self.first_delay)
+        self.first_delay = 0.0
         img = self.face()
         return True, (img.copy() if FakeCapture.show_face else np.zeros_like(img))
 
@@ -73,5 +79,6 @@ def fake_camera(monkeypatch):
     FakeCapture.instances = []
     FakeCapture.show_face = True
     FakeCapture.can_open = True
+    FakeCapture.reopen_delay = 0.0
     monkeypatch.setattr(ct.cv2, "VideoCapture", FakeCapture)
     return FakeCapture

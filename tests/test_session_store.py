@@ -131,13 +131,14 @@ def test_pause_resume_keeps_timeline_continuous(conn, db):
         rec.add_frame(frame(spatial="head_down" if i >= 30 else "normal"), T0 + i * 0.1)
     rec.pause(T0 + 3.45)
 
+    # 暂停点是最后一帧的听课时间（3.4），墙上时间记按下暂停的时刻
     pause = dict(conn.execute("SELECT * FROM pauses WHERE session_id = ?", (sid,)).fetchone())
-    assert pause["t"] == pytest.approx(3.45) and pause["paused_at"] == T0 + 3.45 and pause["resumed_at"] is None
-    # 暂停时关闭进行中的事件
+    assert pause["t"] == pytest.approx(3.4) and pause["paused_at"] == T0 + 3.45 and pause["resumed_at"] is None
+    # 暂停时关闭进行中的事件（止于最后一帧）
     (ev,) = events(conn, sid, "spatial")
-    assert (ev["type"], ev["t_start"], ev["t_end"]) == ("head_down", pytest.approx(3.0), pytest.approx(3.45))
+    assert (ev["type"], ev["t_start"], ev["t_end"]) == ("head_down", pytest.approx(3.0), pytest.approx(3.4))
 
-    # 暂停 10 分钟后继续：时间轴从暂停点后的下一整秒接着走
+    # 暂停 10 分钟后继续：时间轴从暂停前最后一秒的下一秒接着走
     resume_wall = T0 + 600
     rec2 = SessionRecorder(sid, resume_wall, db)
     assert rec2.t_base == 4.0
@@ -153,11 +154,56 @@ def test_pause_resume_keeps_timeline_continuous(conn, db):
     assert samples(conn, sid)[4]["wall_time"] == resume_wall
 
 
-def test_pause_without_frames_does_not_advance_timeline(conn, db):
+def test_pause_without_frames_records_no_pause(conn, db):
     sid = session_store.create_session(conn, T0)
     rec = SessionRecorder(sid, T0, db)
-    rec.pause(T0 + 30)  # 例如摄像头打不开
-    assert conn.execute("SELECT t FROM pauses").fetchone()["t"] == 0.0
+    rec.pause(T0 + 30)  # 例如校准刚结束、还没有监控帧就暂停
+    assert conn.execute("SELECT COUNT(*) FROM pauses").fetchone()[0] == 0
+    assert SessionRecorder(sid, T0 + 60, db).t_base == 0.0  # 继续后从 0 开始
+
+
+def test_resume_continuous_when_last_frames_missing_before_pause(conn, db):
+    """最后一帧在 2.98，3.05 才暂停：第 3 秒没有帧，继续后应从第 3 秒开始，而不是第 4 秒（#15）"""
+    sid = session_store.create_session(conn, T0)
+    rec = SessionRecorder(sid, T0, db)
+    for i in range(150):  # 0.00 ~ 2.98 秒
+        rec.add_frame(frame(), T0 + i * 0.02)
+    rec.pause(T0 + 3.05)
+    rec2 = SessionRecorder(sid, T0 + 100, db)
+    assert rec2.t_base == 3.0
+    rec2.add_frame(frame(), T0 + 100)
+    rec2.close(T0 + 100.5)
+    assert [s["t"] for s in samples(conn, sid)] == [0, 1, 2, 3]
+
+
+def test_resume_after_frame_exactly_on_second_boundary(conn, db):
+    """最后一帧恰在整秒（3.0）：它写成第 3 秒，继续后从第 4 秒开始，不重复"""
+    sid = session_store.create_session(conn, T0)
+    rec = SessionRecorder(sid, T0, db)
+    for i in range(7):  # 0.0 ~ 3.0 秒
+        rec.add_frame(frame(), T0 + i * 0.5)
+    rec.pause(T0 + 3.0)
+    rec2 = SessionRecorder(sid, T0 + 100, db)
+    assert rec2.t_base == 4.0
+    rec2.add_frame(frame(), T0 + 100)
+    rec2.close(T0 + 100.2)
+    assert [s["t"] for s in samples(conn, sid)] == [0, 1, 2, 3, 4]
+
+
+def test_resume_segment_starting_on_first_frame_then_paused(conn, db):
+    """继续后只处理了一帧（t 恰为整数）就再次暂停：下一次继续不与它重复"""
+    sid = session_store.create_session(conn, T0)
+    rec = SessionRecorder(sid, T0, db)
+    rec.add_frame(frame(), T0 + 0.3)
+    rec.pause(T0 + 0.5)
+    rec = SessionRecorder(sid, T0 + 10, db)   # 继续：记录器在首帧时刻启动，首帧 t = 1.0
+    rec.add_frame(frame(), T0 + 10)
+    rec.pause(T0 + 10.2)
+    rec = SessionRecorder(sid, T0 + 20, db)
+    rec.add_frame(frame(), T0 + 20)
+    rec.close(T0 + 20.5)
+    assert [s["t"] for s in samples(conn, sid)] == [0, 1, 2]
+    assert [p["t"] for p in conn.execute("SELECT t FROM pauses ORDER BY id")] == [pytest.approx(0.3), 1.0]
 
 
 # ---------- 事件 ----------
@@ -171,7 +217,8 @@ def test_spatial_events_open_and_close_on_state_change(conn, db):
     rec.close(T0 + 2.3)
 
     got = [(e["type"], round(e["t_start"], 2), round(e["t_end"], 2)) for e in events(conn, sid, "spatial")]
-    assert got == [("head_down", 0.5, 1.0), ("distracted", 1.0, 1.5), ("away", 2.0, 2.3)]
+    # 结束时进行中的事件止于最后一帧（2.2），而不是结束时刻
+    assert got == [("head_down", 0.5, 1.0), ("distracted", 1.0, 1.5), ("away", 2.0, 2.2)]
     assert all(e["wall_start"] == pytest.approx(T0 + e["t_start"]) for e in events(conn, sid, "spatial"))
 
 

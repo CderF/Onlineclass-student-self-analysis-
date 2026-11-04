@@ -26,9 +26,10 @@ class SessionRecorder:
         self._open_event_id: Optional[int] = None
         self._open_event_type: Optional[str] = None
         self._has_frames = False
+        self._last_wall = start_wall
 
     def _resume_point(self, start_wall: float) -> float:
-        """若上次以暂停结束，则从暂停点之后的下一整秒继续，并记下继续时刻"""
+        """若上次以暂停结束，则从暂停前最后一秒的下一秒继续，并记下继续时刻"""
         pause = self.conn.execute(
             "SELECT id, t FROM pauses WHERE session_id = ? AND resumed_at IS NULL ORDER BY id DESC LIMIT 1",
             (self.session_id,),
@@ -37,8 +38,8 @@ class SessionRecorder:
             return 0.0
         with self.conn:
             self.conn.execute("UPDATE pauses SET resumed_at = ? WHERE id = ?", (start_wall, pause["id"]))
-        # 暂停前不足一秒的部分已写成一条样本，向上取整避免与它的秒数重复
-        return float(math.ceil(pause["t"]))
+        # 暂停点是最后一帧的时间，它所在的那一秒已写成一条样本：从下一秒继续，时间轴连续且不重复
+        return float(math.floor(pause["t"]) + 1)
 
     def active_time(self, wall: float) -> float:
         """墙上时间 → 听课时间轴（秒）"""
@@ -47,6 +48,7 @@ class SessionRecorder:
     def add_frame(self, result: AnalysisResult, wall: float) -> None:
         t = self.active_time(wall)
         self._has_frames = True
+        self._last_wall = wall
         second = int(t)
         if self._bucket_t is not None and second != self._bucket_t:
             self._flush_bucket()
@@ -64,11 +66,15 @@ class SessionRecorder:
             )
 
     def pause(self, wall: float) -> None:
-        """暂停：写入剩余数据、关闭进行中的事件、记录暂停点，然后关闭连接"""
+        """
+        暂停：写入剩余数据、关闭进行中的事件、记录暂停点（最后一帧的听课时间），然后关闭连接。
+        本段一帧都没有（如校准刚结束就暂停）时不记录暂停：没有听课数据，时间轴也不需要断开。
+        """
         t = self._finish_segment(wall)
-        self.conn.execute(
-            "INSERT INTO pauses (session_id, t, paused_at) VALUES (?, ?, ?)", (self.session_id, t, wall)
-        )
+        if self._has_frames:
+            self.conn.execute(
+                "INSERT INTO pauses (session_id, t, paused_at) VALUES (?, ?, ?)", (self.session_id, t, wall)
+            )
         self.conn.commit()
         self.conn.close()
 
@@ -79,8 +85,8 @@ class SessionRecorder:
         self.conn.close()
 
     def _finish_segment(self, wall: float) -> float:
-        # 本段一帧都没有（如摄像头打不开）时听课时间轴不前进
-        t = self.active_time(wall) if self._has_frames else self.t_base
+        # 听课数据止于最后一帧（之后到暂停 / 结束之间没有帧的时间不算听课）；本段一帧都没有时不前进
+        t = self.active_time(self._last_wall) if self._has_frames else self.t_base
         self._flush_bucket()
         self._close_spatial_event(t)
         return t

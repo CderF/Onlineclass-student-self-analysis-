@@ -74,10 +74,13 @@ class CameraThread(QThread):
         yaw_buffer = []
         if not is_calibrating:
             self.update_status_signal.emit("モニタリング中", "success")
-            self._guard_record(self._start_recording, time.time())
+        # 继续时记录器在第一帧处理完后才启动：等待摄像头首帧的时间不算听课时间（#15）
+        start_recording_on_first_frame = not is_calibrating
 
         while self._run_flag:
             ret, frame = cap.read()
+            if not self._run_flag:
+                break  # 读帧期间已请求暂停 / 终了：这一帧拍在暂停之后，不再处理和记录
             if ret:
                 try:
 
@@ -168,6 +171,9 @@ class CameraThread(QThread):
                             _, alert_title, alert_msg = result.alert
                             self.alert_signal.emit(alert_title, alert_msg)
 
+                        if start_recording_on_first_frame:
+                            start_recording_on_first_frame = False
+                            self._guard_record(self._start_recording, current_time)
                         if self.recorder is not None:
                             self._guard_record(self.recorder.add_frame, result, current_time)
 

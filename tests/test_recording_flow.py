@@ -1,4 +1,6 @@
 """#4 监控页接入课程记录：开始 / 暂停 / 继续 / 结束 / 关闭窗口 与数据库的对应关系"""
+import math
+
 import pytest
 
 from app import session_store
@@ -264,3 +266,75 @@ def test_frames_and_ui_keep_flowing_while_recording(monitor, fake_camera):
     wait(300)
     recorded = db_rows("SELECT SUM(frame_count) AS n FROM samples")[0]["n"]
     assert recorded and len(frames) > recorded  # 校准期的帧显示但不记录
+
+
+# ---------- 继续后首帧较慢（#15） ----------
+
+@needs_weights
+def test_slow_first_frame_after_resume_keeps_timeline_continuous(monitor, fake_camera):
+    fake_camera.reopen_delay = 1.5
+    monitor._on_start_clicked()
+    wait(CALIBRATION_WAIT_MS + 1500)
+    sid = monitor.camera_thread.session_id
+    monitor._on_pause_clicked()
+    wait(500)
+    monitor._on_pause_clicked()
+    wait(3500)
+    monitor._on_stop_clicked()
+    wait(300)
+
+    assert_timeline_continuous(sid)
+    (p,) = db_rows("SELECT * FROM pauses WHERE session_id = ?", sid)
+    samples = db_rows("SELECT * FROM samples WHERE session_id = ? ORDER BY t", sid)
+    after = [r for r in samples if r["wall_time"] >= p["resumed_at"]]
+    # 继续后的第一秒正好接在暂停点之后，且是在首帧到来之后才开始
+    assert after and after[0]["t"] == math.floor(p["t"]) + 1
+    # 等待首帧的时间计入暂停（不算听课时间）
+    assert p["resumed_at"] - p["paused_at"] >= 0.5 + 1.4
+
+
+@needs_weights
+def test_pause_again_before_first_frame_after_resume(monitor, fake_camera):
+    fake_camera.reopen_delay = 2.0
+    monitor._on_start_clicked()
+    wait(CALIBRATION_WAIT_MS + 1500)
+    sid = monitor.camera_thread.session_id
+    monitor._on_pause_clicked()
+    wait(300)
+    monitor._on_pause_clicked()   # 继续
+    wait(300)
+    monitor._on_pause_clicked()   # 首帧到来之前再次暂停：这段采集没有数据
+    wait(300)
+    monitor._on_pause_clicked()   # 再继续
+    wait(4000)
+    monitor._on_stop_clicked()
+    wait(300)
+
+    assert_timeline_continuous(sid)
+    pauses = db_rows("SELECT * FROM pauses WHERE session_id = ?", sid)
+    # 没有数据的那段采集不留痕迹：只有一次暂停，持续到最后一次继续后的首帧
+    assert len(pauses) == 1 and pauses[0]["resumed_at"] is not None
+    samples = db_rows("SELECT * FROM samples WHERE session_id = ? ORDER BY t", sid)
+    after = [r for r in samples if r["wall_time"] >= pauses[0]["resumed_at"]]
+    assert after and after[0]["t"] == math.floor(pauses[0]["t"]) + 1
+
+
+@needs_weights
+def test_stop_before_first_frame_after_resume(monitor, fake_camera):
+    fake_camera.reopen_delay = 2.0
+    monitor._on_start_clicked()
+    wait(CALIBRATION_WAIT_MS + 1500)
+    sid = monitor.camera_thread.session_id
+    monitor._on_pause_clicked()
+    wait(300)
+    n_before = len(db_rows("SELECT t FROM samples WHERE session_id = ?", sid))  # 暂停时才写入最后不足一秒的部分
+    monitor._on_pause_clicked()
+    wait(300)
+    monitor._on_stop_clicked()     # 首帧到来之前终了
+    wait(300)
+
+    (s,) = db_rows("SELECT * FROM sessions")
+    assert s["status"] == "completed"
+    (p,) = db_rows("SELECT * FROM pauses WHERE session_id = ?", sid)
+    assert p["resumed_at"] is None   # 继续后没有听课数据，暂停视为持续到结束
+    assert len(assert_timeline_continuous(sid)) == n_before

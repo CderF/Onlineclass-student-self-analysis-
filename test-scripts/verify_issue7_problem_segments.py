@@ -43,7 +43,7 @@ def check(name, cond, detail=""):
 # ------------------------------------------------------------------ 1. 参考实现
 def reference(samples, events, pauses, cfg=DEFAULT_CONFIG):
     """与 app/problem_segments.py 独立的朴素实现：逐秒按 t 直接数窗口"""
-    bounds = sorted({math.ceil(p["t"]) for p in pauses})
+    bounds = sorted({math.floor(p["t"]) + 1 for p in pauses})
     by_t = {s["t"]: s for s in samples}
     end = samples[-1]["t"] + 1 if samples else 0
 
@@ -108,10 +108,10 @@ def random_lesson(rng):
     t, cog, fat, open_event = 0, "Neutral", rng.random() * 0.5, None
     while len(samples) < n:
         r = rng.random()
-        if r < 0.004 and samples:                      # 暂停：暂停点在最后一秒之内或恰为整数，继续后从下一整秒开始
-            p = samples[-1]["t"] + rng.choice([0.3, 0.999, 1.0])
+        if r < 0.004 and samples:                      # 暂停：暂停点为最后一帧的时间（在最后一秒之内），继续后从下一秒开始
+            p = samples[-1]["t"] + rng.choice([0.0, 0.3, 0.999])
             pauses.append({"t": p, "paused_at": 0.0, "resumed_at": 1.0})
-            t = math.ceil(p)
+            t = math.floor(p) + 1
         elif r < 0.006:                                # 时间轴空缺
             t += rng.randint(1, 20)
         if rng.random() < 0.03:
@@ -139,22 +139,22 @@ def random_lesson(rng):
         for p in pauses:
             if e["kind"] == "spatial" and e["t_start"] < p["t"] < e["t_end"]:
                 split.append({**e, "t_end": p["t"]})
-                e = {**e, "t_start": float(math.ceil(p["t"]))}
-            elif p["t"] <= e["t_start"] < math.ceil(p["t"]):  # 暂停点到下一整秒之间不在时间轴上
-                e = {**e, "t_start": float(math.ceil(p["t"]))}
+                e = {**e, "t_start": float(math.floor(p["t"]) + 1)}
+            elif p["t"] <= e["t_start"] < math.floor(p["t"]) + 1:  # 暂停点到下一秒之间不在时间轴上
+                e = {**e, "t_start": float(math.floor(p["t"]) + 1)}
                 if e["kind"] == "alert":
                     e["t_end"] = e["t_start"]
         if e["kind"] != "spatial" or e["t_start"] < e["t_end"]:
             split.append(e)
     events = split
-    last_resume = max((math.ceil(p["t"]) for p in pauses), default=0)
+    last_resume = max((math.floor(p["t"]) + 1 for p in pauses), default=0)
     if events and events[-1]["t_start"] >= last_resume and rng.random() < 0.2:
         events[-1]["t_end"] = None                     # 记录中仍在进行（只可能在最后一次继续之后）
     return samples, events, pauses
 
 
 def invariants(result, samples, pauses):
-    bounds = {math.ceil(p["t"]) for p in pauses}
+    bounds = {math.floor(p["t"]) + 1 for p in pauses}
     end = samples[-1]["t"] + 1 if samples else 0
     for cat in (DOUBT, FATIGUE, DISTRACTION):
         ivs = sorted((p["start"], p["end"]) for p in result if p["category"] == cat)

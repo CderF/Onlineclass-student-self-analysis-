@@ -40,7 +40,8 @@ def detect(samples: Sequence[Row], events: Sequence[Row], pauses: Sequence[Row],
     输入一节课按 t 排序的每秒样本、事件、暂停（report_data.load_session 的格式），
     输出 [{"category", "start", "end"}]（听课时间轴上的秒，左闭右开），按开始时间排序。
     """
-    boundaries = sorted({float(math.ceil(p["t"])) for p in pauses})  # 继续后从暂停点的下一整秒开始
+    # 继续后从暂停前最后一秒的下一秒开始（ADR 0002）
+    boundaries = sorted({float(math.floor(p["t"]) + 1) for p in pauses})
     end = samples[-1]["t"] + 1 if samples else 0
     found: List[Row] = []
     for category, intervals in (

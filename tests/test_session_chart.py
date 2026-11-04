@@ -108,7 +108,8 @@ def test_describe_second(page):
 # ---------- 由真实记录生成的图表 ----------
 
 def record_lesson(db, conn):
-    """0–9 秒：前 3 秒理解，3–6 秒离席（无脸），6 秒警报；9.5 秒暂停 300 秒；继续后 10–14 秒疑问、11 秒起低头直到结束"""
+    """0–9 秒：前 3 秒理解，3–6 秒离席（无脸），6 秒警报；最后一帧 9 秒后暂停 300 秒；
+    继续后 10–14 秒疑问、11 秒起低头直到结束（止于最后一帧 14 秒）"""
     sid = session_store.create_session(conn, T0)
     rec = SessionRecorder(sid, T0, db)
     for i in range(10):
@@ -148,9 +149,9 @@ def test_option_matches_record(db, conn, open_report):
     assert bars("中立") == [] and bars("嫌悪") == []
 
     db_events = [e for e in data["events"] if e["kind"] == "spatial"]
-    assert [(e["type"], e["t_start"], e["t_end"]) for e in db_events] == [("away", 3.0, 6.0), ("head_down", 11.0, 15.0)]
+    assert [(e["type"], e["t_start"], e["t_end"]) for e in db_events] == [("away", 3.0, 6.0), ("head_down", 11.0, 14.0)]
     assert bars("離席") == [[3.0, 6.0]]
-    assert bars("下向き・ノート") == [[11.0, 15.0]]
+    assert bars("下向き・ノート") == [[11.0, 14.0]]
     assert bars("注意散漫") == []
 
     alerts = series(opt, "アラート", "scatter")[0]["data"]
@@ -159,7 +160,7 @@ def test_option_matches_record(db, conn, open_report):
     pause_lines = series(opt, "一時停止")
     assert len(pause_lines) == 5  # 每行都有暂停竖线
     for s in pause_lines:
-        assert [round(d["xAxis"] * 60, 6) for d in s["markLine"]["data"]] == [9.5]
+        assert [round(d["xAxis"] * 60, 6) for d in s["markLine"]["data"]] == [9.0]
     assert pause_lines[0]["markLine"]["data"][0]["text"] == "一時停止 5分0秒"
 
     assert opt["legend"][0]["data"] == ["理解不足の可能性", "疲労", "注意散漫・離席",
@@ -227,7 +228,7 @@ def test_tooltip_inside_band_bar_uses_pointer_time(db, conn, open_report):
     record_lesson(db, conn)
     # 指向「疑問」矩形（10–15 秒）的中间：时间应为 12 秒，而不是被吸附到矩形起点 10 秒
     text = hover(open_report(), 2, 12 / 60, "認知状態")
-    assert "0分12秒" in text and "認知状態：疑問" in text and "下向き（0分11秒〜0分15秒）" in text
+    assert "0分12秒" in text and "認知状態：疑問" in text and "下向き（0分11秒〜0分14秒）" in text
 
 
 def test_tooltip_when_curves_hidden(db, conn, open_report):

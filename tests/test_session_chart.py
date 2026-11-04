@@ -93,11 +93,12 @@ def test_describe_second(page):
         intervals: [{label: '離席中', start: 99.5, end: 120.0}],
         alerts: [{label: '離席継続', t: 104.2}],
         pauses: [{t: 100.3, seconds: 65}],
+        problems: [{category: 'doubt', start: 90, end: 130}],
     }"""
     text = js(page, f"SessionChart.describeSecond({ctx}, 100)")
     assert text.split("<br>") == [
         "<b>1分40秒</b>", "エンゲージメント：72", "疲労指数：0.31", "認知状態：疑問",
-        "離席中（1分39秒〜2分0秒）", "一時停止（1分5秒）",
+        "離席中（1分39秒〜2分0秒）", "問題：理解不足の可能性（1分30秒〜2分10秒）", "一時停止（1分5秒）",
     ]
     # 容差内的警报也显示（缩小时一像素有好几秒）
     assert "アラート：離席継続" in js(page, f"SessionChart.describeSecond({ctx}, 100, 5)")
@@ -156,12 +157,13 @@ def test_option_matches_record(db, conn, open_report):
     assert [round(a[0] * 60, 6) for a in alerts] == [6.0]
 
     pause_lines = series(opt, "一時停止")
-    assert len(pause_lines) == 4  # 四行都有暂停竖线
+    assert len(pause_lines) == 5  # 每行都有暂停竖线
     for s in pause_lines:
         assert [round(d["xAxis"] * 60, 6) for d in s["markLine"]["data"]] == [9.5]
     assert pause_lines[0]["markLine"]["data"][0]["text"] == "一時停止 5分0秒"
 
-    assert opt["legend"][0]["data"] == ["エンゲージメント", "疲労指数", "理解", "疑問", "中立", "嫌悪",
+    assert opt["legend"][0]["data"] == ["理解不足の可能性", "疲労", "注意散漫・離席",
+                                         "エンゲージメント", "疲労指数", "理解", "疑問", "中立", "嫌悪",
                                          "下向き・ノート", "注意散漫", "離席", "アラート", "一時停止"]
 
 
@@ -212,7 +214,8 @@ def hover(report, grid, minute, row):
     }})()""")
 
 
-@pytest.mark.parametrize("grid, row", [(0, 50), (1, 0.5), (2, "認知状態"), (3, "離席"), (3, "アラート")])
+@pytest.mark.parametrize("grid, row", [(0, 50), (1, 0.5), (2, "認知状態"), (3, "離席"), (3, "アラート"),
+                                       (4, "注意散漫・離席")])
 def test_tooltip_same_second_on_every_row(db, conn, open_report, grid, row):
     record_lesson(db, conn)
     text = hover(open_report(), grid, 4 / 60, row)
@@ -244,7 +247,7 @@ def test_zoom_is_linked_across_rows(db, conn, open_report):
     extents = js(report, """(() => {
         const c = echarts.getInstanceByDom(document.getElementById('score-chart'));
         c.dispatchAction({type: 'dataZoom', start: 50, end: 100});
-        return [0, 1, 2, 3].map((i) => c.getModel().getComponent('xAxis', i).axis.scale.getExtent());
+        return [0, 1, 2, 3, 4].map((i) => c.getModel().getComponent('xAxis', i).axis.scale.getExtent());
     })()""")
     assert all(e == pytest.approx(extents[0]) for e in extents)
     assert extents[0] == pytest.approx([7.5 / 60, 15 / 60])
@@ -281,3 +284,55 @@ def test_crosshair_distinct_from_pause_lines(db, conn, open_report):
     opt = option(open_report())
     assert all(x["axisPointer"]["lineStyle"]["type"] == "solid" for x in opt["xAxis"])
     assert all(s["markLine"]["lineStyle"]["type"] == "dashed" for s in series(opt, "一時停止"))
+
+
+# ---------- 问题时段（#7） ----------
+
+def record_problem_lesson(db, conn):
+    """200 秒：0–100 秒疑問、60–75 秒离席、120 秒起疲劳指数 0.9"""
+    sid = session_store.create_session(conn, T0)
+    rec = SessionRecorder(sid, T0, db)
+    for i in range(200):
+        away = 60 <= i < 75
+        rec.add_frame(frame(cognitive=None if away else ("Doubt" if i < 100 else "Neutral"),
+                            fatigue=0.9 if i >= 120 else 0.1, spatial="away" if away else "normal",
+                            has_face=not away), T0 + i)
+    rec.close(T0 + 200)
+    session_store.finish_session(conn, sid, T0 + 200)
+    return sid
+
+
+def test_problem_row_and_shading_match_detection(db, conn, open_report):
+    sid = record_problem_lesson(db, conn)
+    problems = report_data.load_session(conn, sid)["problems"]
+    assert {p["category"] for p in problems} == {"doubt", "fatigue", "distraction"}
+    opt = option(open_report())
+
+    assert opt["yAxis"][4]["data"] == ["注意散漫・離席", "疲労", "理解不足の可能性"]
+    labels = {"doubt": "理解不足の可能性", "fatigue": "疲労", "distraction": "注意散漫・離席"}
+    for key, label in labels.items():
+        want = [(p["start"], p["end"]) for p in problems if p["category"] == key]
+        row = opt["yAxis"][4]["data"].index(label)
+        bar = series(opt, label, "custom")[0]
+        assert [(round(d[0] * 60, 6), round(d[1] * 60, 6)) for d in bar["data"]] == want
+        assert all(d[2] == row for d in bar["data"]) and bar["xAxisIndex"] == 4
+        shade = series(opt, label, "line")[0]
+        assert shade["xAxisIndex"] == 0
+        assert [(round(a["xAxis"] * 60, 6), round(b["xAxis"] * 60, 6)) for a, b in shade["markArea"]["data"]] == want
+
+
+def test_problem_in_tooltip(db, conn, open_report):
+    record_problem_lesson(db, conn)
+    text = hover(open_report(), 0, 30 / 60, 50)
+    assert "問題：理解不足の可能性（0分0秒〜" in text
+
+
+def test_problem_legend_toggles_row_and_shading(db, conn, open_report):
+    record_problem_lesson(db, conn)
+    report = open_report()
+    selected = js(report, """(() => {
+        const c = echarts.getInstanceByDom(document.getElementById('score-chart'));
+        c.dispatchAction({type: 'legendUnSelect', name: '疲労'});
+        return c.getOption().legend[0].selected;
+    })()""")
+    assert selected["疲労"] is False and selected["疲労指数"] is True

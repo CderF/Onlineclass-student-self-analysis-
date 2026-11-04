@@ -104,7 +104,8 @@ def compare_chart(page, db, sid, label):
     lines = [x for x in opt["series"] if x["name"] == "一時停止"]
     got_pauses = [[round(d["xAxis"] * 60, 3) for d in s["markLine"]["data"]] for s in lines]
     want = [round(p["t"], 3) for p in pauses]
-    check(f"{label}：四行都在暂停位置画竖线", len(lines) == 4 and all(g == want for g in got_pauses), str(want))
+    check(f"{label}：每行都在暂停位置画竖线", len(lines) == len(opt["grid"]) and all(g == want for g in got_pauses),
+          f"{len(opt['grid'])} 行，{want}")
     check(f"{label}：横轴终点为听课时间轴终点", all(abs(x["max"] * 60 - end) < 1e-6 for x in opt["xAxis"]), f"{end} 秒")
     return samples, spatial, alerts, pauses
 
@@ -321,8 +322,8 @@ def main(db: Path, shot_dir: Path):
     QTest.qWait(500)
     after = chart_js(report.page, "return c.getOption().dataZoom[0];")
     extents = chart_js(report.page,
-                       "return [0, 1, 2, 3].map((i) => c.getModel().getComponent('xAxis', i).axis.scale.getExtent());")
-    check("滚轮缩放后四行横轴范围相同且变窄",
+                       "return c.getOption().xAxis.map((_, i) => c.getModel().getComponent('xAxis', i).axis.scale.getExtent());")
+    check("滚轮缩放后各行横轴范围相同且变窄",
           after["end"] - after["start"] < before["end"] - before["start"]
           and all(abs(e[0] - extents[0][0]) < 1e-9 and abs(e[1] - extents[0][1]) < 1e-9 for e in extents),
           f"{before['start']:.0f}–{before['end']:.0f}% → {after['start']:.1f}–{after['end']:.1f}%")

@@ -203,6 +203,17 @@ $$\text{Score}(t) = \text{Score}_{\text{before\_absent}} \cdot \left[1 - \left(\
 
 当 $t > 120$ 秒时，$\text{Score}(t) = 0$，状态完全退化为 `ABSENT`，触发长时离席警报。
 
+### 5. 问题时段判定（课后报告）
+课后对一节课的每秒数据判定三类问题时段（`app/problem_segments.py`，阈值集中在 `ProblemConfig`，以下为初始值，实验后调整）。窗口以每秒为中心，在暂停处截断，不跨暂停：
+
+| 类别 | 判定（逐秒） |
+|---|---|
+| 理解不足の可能性 | 60 秒窗口内有认知状态的秒数 $\ge 30$，且 $N_{\text{Doubt}} / N_{\text{有认知状态}} \ge 0.4$ |
+| 疲労 | 30 秒窗口内疲劳指数的平均值 $\ge 0.38$（与疲劳警报阈值相同） |
+| 注意散漫・離席 | 空间状态为 `distracted` / `hidden_abnormal` / `away` / `absent` 的事件区间（帧级） |
+
+同类时段间隔 $\le 10$ 秒且中间没有暂停则合并；合并后短于 30 秒（注意散漫・離席为 10 秒）的丢弃。
+
 ---
 
 ## 📝 开发者规范 (Developer Guidelines)

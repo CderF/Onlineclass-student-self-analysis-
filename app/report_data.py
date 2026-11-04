@@ -2,6 +2,8 @@
 import sqlite3
 from typing import Any, Dict, List, Optional
 
+from app import problem_segments
+
 SESSION_COLUMNS = "s.id, s.course_name, s.started_at, s.ended_at, s.status"
 SUMMARY_COLUMNS = "COUNT(x.t) AS seconds, AVG(x.score) AS avg_score"
 
@@ -17,7 +19,7 @@ def list_sessions(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
 
 
 def load_session(conn: sqlite3.Connection, session_id: int) -> Optional[Dict[str, Any]]:
-    """一条课程记录的概要、每秒样本、事件与暂停；记录不存在时返回 None"""
+    """一条课程记录的概要、每秒样本、事件、暂停与问题时段（app/problem_segments.py）；记录不存在时返回 None"""
     session = conn.execute(
         f"SELECT {SESSION_COLUMNS}, s.baseline_pitch, s.baseline_yaw, {SUMMARY_COLUMNS}"
         " FROM sessions s LEFT JOIN samples x ON x.session_id = s.id"
@@ -30,15 +32,17 @@ def load_session(conn: sqlite3.Connection, session_id: int) -> Optional[Dict[str
     def fetch(sql: str) -> List[Dict[str, Any]]:
         return [dict(r) for r in conn.execute(sql, (session_id,))]
 
+    samples = fetch(
+        "SELECT t, wall_time, score, fatigue_index, cognitive_state, spatial_state,"
+        " face_ratio, delta_pitch, delta_yaw, frame_count"
+        " FROM samples WHERE session_id = ? ORDER BY t"
+    )
+    events = fetch("SELECT kind, type, t_start, t_end, wall_start FROM events WHERE session_id = ? ORDER BY t_start, id")
+    pauses = fetch("SELECT t, paused_at, resumed_at FROM pauses WHERE session_id = ? ORDER BY t, id")
     return {
         "session": dict(session),
-        "samples": fetch(
-            "SELECT t, wall_time, score, fatigue_index, cognitive_state, spatial_state,"
-            " face_ratio, delta_pitch, delta_yaw, frame_count"
-            " FROM samples WHERE session_id = ? ORDER BY t"
-        ),
-        "events": fetch(
-            "SELECT kind, type, t_start, t_end, wall_start FROM events WHERE session_id = ? ORDER BY t_start, id"
-        ),
-        "pauses": fetch("SELECT t, paused_at, resumed_at FROM pauses WHERE session_id = ? ORDER BY t, id"),
+        "samples": samples,
+        "events": events,
+        "pauses": pauses,
+        "problems": problem_segments.detect(samples, events, pauses),
     }

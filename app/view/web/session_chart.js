@@ -1,6 +1,6 @@
 "use strict";
 
-// 单节课图表：参与度分数、疲劳指数、认知状态色带、空间状态 / 警报标注，四行共用听课时间轴（分钟）
+// 单节课图表：问题时段、参与度分数、疲劳指数、认知状态色带、空间状态 / 警报标注，五行共用听课时间轴（分钟）
 // 数据转换都是纯函数，挂在 window.SessionChart 上，便于测试直接调用
 
 (function () {
@@ -21,6 +21,12 @@
     distracted: "注意散漫", hidden_abnormal: "顔未検出（長時間）", away: "離席中", absent: "不在",
   };
   const ALERT_LABELS = { fatigue: "疲労", head_down: "長時間の下向き", hidden: "顔未検出", absence: "離席継続" };
+  // 问题时段（判定在 app/problem_segments.py）：每类一行，并在分数曲线背后加同色浅底色
+  const PROBLEMS = [
+    { key: "doubt", label: "理解不足の可能性", color: "#eb6834" },
+    { key: "fatigue", label: "疲労", color: "#6250d6" },
+    { key: "distraction", label: "注意散漫・離席", color: "#1baf7a" },
+  ];
   const INK = "#52514e";
   const MUTED = "#8a8986";
   const GRID_LINE = "#e6e5e1";
@@ -29,7 +35,11 @@
   const NAMES = {
     score: "エンゲージメント", fatigue: "疲労指数", alert: "アラート", pause: "一時停止",
   };
-  const ROWS = { cognitive: ["認知状態"], spatial: [NAMES.alert, ...SPATIAL_GROUPS.map((g) => g.label).reverse()] };
+  const ROWS = {
+    problems: PROBLEMS.map((p) => p.label).reverse(),
+    cognitive: ["認知状態"],
+    spatial: [NAMES.alert, ...SPATIAL_GROUPS.map((g) => g.label).reverse()],
+  };
 
   function formatTime(seconds) {
     const total = Math.max(0, Math.floor(seconds));
@@ -101,6 +111,12 @@
         lines.push(`${iv.label}（${formatTime(iv.start)}〜${formatTime(iv.end)}）`);
       }
     }
+    for (const p of ctx.problems) {
+      if (p.start < t + 1 + tol && p.end > t - tol) {
+        const label = PROBLEMS.find((c) => c.key === p.category).label;
+        lines.push(`問題：${label}（${formatTime(p.start)}〜${formatTime(p.end)}）`);
+      }
+    }
     for (const a of ctx.alerts) {
       if (a.t < t + 1 + tol && a.t >= t - tol) lines.push(`${NAMES.alert}：${a.label}`);
     }
@@ -156,6 +172,18 @@
     };
   }
 
+  // 分数行里的问题时段底色；与问题时段行同名，图例一起开关
+  function problemShadeSeries(problem, problems) {
+    return {
+      name: problem.label, type: "line", xAxisIndex: 0, yAxisIndex: 0, data: [],
+      itemStyle: { color: problem.color },
+      markArea: {
+        silent: true, animation: false, itemStyle: { color: problem.color, opacity: 0.12 },
+        data: problems.filter((p) => p.category === problem.key).map((p) => [{ xAxis: p.start / 60 }, { xAxis: p.end / 60 }]),
+      },
+    };
+  }
+
   // chart 用于把悬停容差换算成秒（6 像素）；省略时容差为 0
   function buildOption(record, font, chart) {
     const samples = record.samples;
@@ -164,16 +192,20 @@
     const intervals = spatialIntervals(record.events, end);
     const alerts = alertMarks(record.events);
     const pauses = pauseMarks(record.pauses);
-    const ctx = { byT: new Map(samples.map((x) => [x.t, x])), intervals, alerts, pauses };
+    const problems = record.problems;
+    const ctx = { byT: new Map(samples.map((x) => [x.t, x])), intervals, alerts, pauses, problems };
     const min = (s) => s / 60;
     const spatialRow = (label) => ROWS.spatial.indexOf(label);
 
+    // 0 分数、1 疲劳指数、2 认知状态、3 空间状态（底部，带刻度）、4 问题时段（最上方）
     const grids = [
-      { top: 64, height: 170 },
-      { top: 262, height: 80 },
-      { top: 368, height: 24 },
-      { top: 414, height: 88 },
+      { top: 148, height: 170 },
+      { top: 346, height: 80 },
+      { top: 452, height: 24 },
+      { top: 498, height: 88 },
+      { top: 64, height: 60 },
     ].map((g) => ({ ...g, left: 112, right: 32 }));
+    const allX = grids.map((_, i) => i);
     const xAxes = grids.map((_, i) => ({
       type: "value", gridIndex: i, min: 0, max: Math.max(min(end), 1 / 60),
       axisLine: { show: i === 3, lineStyle: { color: MUTED } },
@@ -213,6 +245,9 @@
         name: NAMES.alert, type: "scatter", xAxisIndex: 3, yAxisIndex: 3, symbol: "triangle", symbolSize: 10,
         itemStyle: { color: INK }, data: alerts.map((a) => [min(a.t), spatialRow(NAMES.alert)]),
       },
+      ...PROBLEMS.map((p) => barSeries(p.label, p.color, 4,
+        problems.filter((x) => x.category === p.key).map((x) => [min(x.start), min(x.end), ROWS.problems.indexOf(p.label)]))),
+      ...PROBLEMS.map((p) => problemShadeSeries(p, problems)),
       timeAnchorSeries(3, samples),
       ...grids.map((_, i) => pauseSeries(i, pauses, i === 0)),
     ];
@@ -222,7 +257,7 @@
       textStyle: { fontFamily: font },
       legend: {
         top: 0, left: 112, right: 32, itemWidth: 14, itemHeight: 10, textStyle: { color: INK },
-        data: [NAMES.score, NAMES.fatigue, ...COGNITIVE.map((c) => c.label),
+        data: [...PROBLEMS.map((p) => p.label), NAMES.score, NAMES.fatigue, ...COGNITIVE.map((c) => c.label),
           ...SPATIAL_GROUPS.map((g) => g.label), NAMES.alert, NAMES.pause],
       },
       tooltip: {
@@ -239,17 +274,17 @@
       grid: grids,
       xAxis: xAxes,
       yAxis: [valueAxis(0, NAMES.score, 100), valueAxis(1, NAMES.fatigue, 1),
-        categoryAxis(2, ROWS.cognitive), categoryAxis(3, ROWS.spatial)],
+        categoryAxis(2, ROWS.cognitive), categoryAxis(3, ROWS.spatial), categoryAxis(4, ROWS.problems)],
       dataZoom: [
-        { type: "inside", xAxisIndex: [0, 1, 2, 3], filterMode: "none" },
-        { type: "slider", xAxisIndex: [0, 1, 2, 3], filterMode: "none", height: 20, bottom: 8, left: 112, right: 32 },
+        { type: "inside", xAxisIndex: allX, filterMode: "none" },
+        { type: "slider", xAxisIndex: allX, filterMode: "none", height: 20, bottom: 8, left: 112, right: 32 },
       ],
       series,
     };
   }
 
   window.SessionChart = {
-    COGNITIVE, SPATIAL_GROUPS, SPATIAL_LABELS, ALERT_LABELS, NAMES,
+    COGNITIVE, SPATIAL_GROUPS, SPATIAL_LABELS, ALERT_LABELS, PROBLEMS, NAMES,
     formatTime, endOf, cognitiveRuns, spatialIntervals, alertMarks, pauseMarks, describeSecond, buildOption,
   };
 })();

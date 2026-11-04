@@ -171,7 +171,8 @@ def end_to_end(db: Path):
     print("\n[2] 时间轴核算")
     samples = rows(db, "SELECT t, wall_time FROM samples WHERE session_id = ? ORDER BY t", first["id"])
     ts = [s["t"] for s in samples]
-    check("时间轴从 0 开始连续", ts == list(range(len(ts))), f"{len(ts)} 秒")
+    missing = sorted(set(range(ts[-1] + 1)) - set(ts)) if ts else []
+    check("时间轴从 0 开始连续", ts == list(range(len(ts))), f"{len(ts)} 秒" + (f"，缺少第 {missing} 秒" if missing else ""))
     pause_len = pauses[0]["resumed_at"] - pauses[0]["paused_at"]
     expected = (timeline["stop"] - timeline["start"]) - 3.0 - pause_len
     # 下限：模型加载与重新打开摄像头的延迟；上限：每段采集末尾不足一秒的部分也写成一行（ADR 0002），

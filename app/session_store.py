@@ -92,11 +92,31 @@ def set_baseline(conn: sqlite3.Connection, session_id: int, pitch: float, yaw: f
         )
 
 
+def _clean_name(name: Optional[str]) -> Optional[str]:
+    return (name or "").strip() or None
+
+
 def set_course_name(conn: sqlite3.Connection, session_id: int, name: Optional[str]) -> None:
     """课程名去除首尾空白；空字符串视为未填写"""
-    name = (name or "").strip() or None
     with conn:
-        conn.execute("UPDATE sessions SET course_name = ? WHERE id = ?", (name, session_id))
+        conn.execute("UPDATE sessions SET course_name = ? WHERE id = ?", (_clean_name(name), session_id))
+
+
+def rename_session(conn: sqlite3.Connection, session_id: int, name: Optional[str]) -> bool:
+    """报告页改课程名（#10）：规则同 set_course_name；记录中的课不改。返回是否改了"""
+    with conn:
+        cur = conn.execute(
+            "UPDATE sessions SET course_name = ? WHERE id = ? AND status != 'recording'",
+            (_clean_name(name), session_id),
+        )
+    return cur.rowcount > 0
+
+
+def delete_session(conn: sqlite3.Connection, session_id: int) -> bool:
+    """报告页删除记录（#10）：样本、事件、暂停随外键级联删除；记录中的课不删。返回是否删了"""
+    with conn:
+        cur = conn.execute("DELETE FROM sessions WHERE id = ? AND status != 'recording'", (session_id,))
+    return cur.rowcount > 0
 
 
 def list_course_names(conn: sqlite3.Connection) -> List[str]:

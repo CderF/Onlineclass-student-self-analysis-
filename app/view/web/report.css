@@ -1,5 +1,6 @@
 :root {
   --accent: #009faa;
+  --danger: #c42b1c;
   --text: #1a1a1a;
   --text-secondary: #5f5f5f;
   --card-bg: #ffffff;
@@ -88,6 +89,24 @@ h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
 .table tbody tr[aria-selected="true"] { background: rgba(0, 159, 170, 0.08); }
 
 .message { padding: 40px 20px; text-align: center; color: var(--text-secondary); }
+
+.records th:nth-child(2), .records td:nth-child(2) { text-align: left; white-space: normal; }
+.records td.no-name { color: var(--text-secondary); }
+.row-action {
+  margin-left: 6px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.row-action:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.row-action.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+.row-action:disabled { color: var(--text-secondary); opacity: 0.5; cursor: default; }
+.notice { margin: 0 0 16px; padding: 10px 14px; border-radius: 6px; background: rgba(196, 43, 28, 0.08); color: var(--danger); }
 
 /* 没有记录或读取失败时只显示提示 */
 body[data-state="empty"] .view,

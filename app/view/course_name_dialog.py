@@ -24,3 +24,14 @@ class CourseNameDialog(MessageBoxBase):
 
     def course_name(self) -> Optional[str]:
         return self.nameBox.text().strip() or None
+
+
+class RenameCourseDialog(CourseNameDialog):
+    """报告页「記録の管理」改课程名（#10）：预填当前课程名；清空后保存即改为未填写"""
+
+    def __init__(self, course_names: List[str], current: Optional[str], parent=None):
+        super().__init__(course_names, parent)
+        self.titleLabel.setText("授業名を変更")
+        self.hintLabel.setText("空欄で保存すると「授業名なし」になります。")
+        self.nameBox.setText(current or "")
+        self.cancelButton.setText("キャンセル")

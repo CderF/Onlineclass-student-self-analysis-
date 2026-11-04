@@ -17,6 +17,7 @@
     <nav class="tabs" role="tablist">
       <button type="button" role="tab" id="tab-single" data-view="single" aria-selected="true">授業ごと</button>
       <button type="button" role="tab" id="tab-summary" data-view="summary" aria-selected="false">全体の推移</button>
+      <button type="button" role="tab" id="tab-manage" data-view="manage" aria-selected="false">記録の管理</button>
     </nav>
   </header>
 
@@ -79,6 +80,18 @@
           <tbody></tbody>
         </table>
         <p class="hint">平均エンゲージメントは受講時間で重み付けした平均、問題時段は受講時間に占める合計時間の割合です。行をクリックすると、その授業名で絞り込みます。</p>
+      </div>
+    </section>
+
+    <section id="view-manage" class="view" role="tabpanel" aria-labelledby="tab-manage" hidden>
+      <p id="manage-message" class="notice" hidden></p>
+      <div class="card">
+        <h2>記録の一覧</h2>
+        <p class="hint">行をクリックすると、その授業を「授業ごと」で表示します。記録中の授業は変更・削除できません。</p>
+        <table id="record-table" class="table records">
+          <thead><tr><th>日時</th><th>授業名</th><th>受講時間</th><th>状態</th><th>操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
       </div>
     </section>
   </main>

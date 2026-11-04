@@ -48,6 +48,52 @@ function renderSessionList() {
   select.replaceChildren(...state.sessions.map((s) => new Option(sessionLabel(s), String(s.id))));
   select.value = String(state.selectedId);
   $("session-count").textContent = String(state.sessions.length);
+  renderRecordTable();
+}
+
+// ---------- 記録の管理（#10） ----------
+
+const LOCKED_TITLE = "記録中の授業は変更・削除できません";
+const ACTIONS = [
+  { key: "rename", label: "名前を変更", slot: "rename_session", className: "row-action" },
+  { key: "delete", label: "削除", slot: "delete_session", className: "row-action danger" },
+];
+
+function renderRecordTable() {
+  $("record-table").tBodies[0].replaceChildren(...state.sessions.map((s) => {
+    const cells = [formatDate(s.started_at), s.course_name || "授業名なし", formatDuration(s.seconds),
+      STATUS_LABELS[s.status] || s.status].map((text) => Object.assign(document.createElement("td"), { textContent: text }));
+    if (!s.course_name) cells[1].className = "no-name";
+    const locked = s.status === "recording";
+    const actions = document.createElement("td");
+    actions.append(...ACTIONS.map((a) => {
+      const btn = Object.assign(document.createElement("button"),
+        { type: "button", className: a.className, textContent: a.label, disabled: locked });
+      btn.dataset.action = a.key;
+      if (locked) btn.title = LOCKED_TITLE;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        manage(a.slot, s.id);
+      });
+      return btn;
+    }));
+    const tr = document.createElement("tr");
+    tr.dataset.id = String(s.id);
+    tr.setAttribute("aria-selected", String(s.id === state.selectedId));
+    tr.replaceChildren(...cells, actions);
+    tr.addEventListener("click", () => openSession(s.id));
+    return tr;
+  }));
+}
+
+// 改名 / 删除：确认对话框由 Python 弹出（Qt），返回后重新读取列表；body[data-manage] 为 busy / idle
+async function manage(slot, id) {
+  document.body.dataset.manage = "busy";
+  const res = await call(slot, id);
+  $("manage-message").hidden = !res.error;
+  $("manage-message").textContent = res.error ? "操作できませんでした。もう一度お試しください。" : "";
+  if (res.error || res.data.done) await refresh();
+  document.body.dataset.manage = "idle";
 }
 
 function renderSession(record) {
@@ -219,6 +265,7 @@ function selectTab(view) {
   }
   $("view-single").hidden = view !== "single";
   $("view-summary").hidden = view !== "summary";
+  $("view-manage").hidden = view !== "manage";
   if (view === "single" && state.chart) state.chart.resize();
   if (view === "summary") loadSummary();
 }

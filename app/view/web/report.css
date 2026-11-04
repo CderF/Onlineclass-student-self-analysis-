@@ -90,6 +90,22 @@ h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
 
 .message { padding: 40px 20px; text-align: center; color: var(--text-secondary); }
 
+/* 读取超过 0.3 秒时显示（#16）；固定在右上角，不推动页面内容 */
+.loading {
+  position: fixed;
+  top: 16px;
+  right: 24px;
+  z-index: 10;
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
 .records th:nth-child(2), .records td:nth-child(2) { text-align: left; white-space: normal; }
 .records td.no-name { color: var(--text-secondary); }
 .row-action {

@@ -199,7 +199,7 @@ def test_close_window_during_calibration_leaves_no_record(monitor, fake_camera):
 
     monitor._on_start_clicked()
     wait(1500)
-    main.MainWindow.closeEvent(SimpleNamespace(monitorInterface=monitor), QCloseEvent())
+    main.MainWindow.closeEvent(SimpleNamespace(monitorInterface=monitor, reportInterface=SimpleNamespace(shutdown=lambda: None)), QCloseEvent())
     assert db_rows("SELECT * FROM sessions") == []
 
 
@@ -221,7 +221,7 @@ def test_camera_failure_creates_no_session(monitor, fake_camera):
 @needs_weights
 def test_close_window_while_paused_completes_without_dialog(monitor, fake_camera):
     # offscreen 平台下无法创建 FluentWindow（qframelesswindow 在 macOS 上直接调用 Cocoa），
-    # 这里对 closeEvent 传入只含 monitorInterface 的替身；真实窗口的关闭见 test-scripts/verify_issue4_recording.py
+    # 这里对 closeEvent 传入只含 monitorInterface（与空的 reportInterface）的替身；真实窗口的关闭见 test-scripts/verify_issue4_recording.py
     from types import SimpleNamespace
     from PyQt5.QtGui import QCloseEvent
     import main
@@ -231,7 +231,7 @@ def test_close_window_while_paused_completes_without_dialog(monitor, fake_camera
     monitor._on_pause_clicked()
     wait(300)
     event = QCloseEvent()
-    main.MainWindow.closeEvent(SimpleNamespace(monitorInterface=monitor), event)
+    main.MainWindow.closeEvent(SimpleNamespace(monitorInterface=monitor, reportInterface=SimpleNamespace(shutdown=lambda: None)), event)
     assert event.isAccepted()
     (s,) = db_rows("SELECT * FROM sessions")
     assert s["status"] == "completed" and s["course_name"] is None

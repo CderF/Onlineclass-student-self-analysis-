@@ -104,6 +104,7 @@ def open_report(qapp):
     from PyQt5 import sip
     for report in pages:
         assert report.page.js_errors == []
+        report.shutdown()   # 先等后台任务结束（#16），再销毁
         sip.delete(report)  # 立即释放：留到进程退出时才销毁 WebEngine 页面会崩溃
 
 

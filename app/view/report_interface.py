@@ -5,7 +5,7 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any, Callable, ContextManager, Dict, Iterator, List, Optional, Tuple
 
-from PyQt5.QtCore import QObject, QPoint, QRect, QStandardPaths, QUrl, Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QObject, QPoint, QRect, QRunnable, QStandardPaths, QThreadPool, QUrl, Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
 from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineProfile, QWebEngineView
@@ -20,19 +20,84 @@ WEB_DIR = Path(__file__).resolve().parent / "web"
 LOCAL_SCHEMES = {"file", "qrc", "data"}
 
 
+class _Relay(QObject):
+    """把后台线程的结果送回界面线程（排队连接）"""
+    finished = pyqtSignal(int, str)
+
+
+class _Task(QRunnable):
+    def __init__(self, work: Callable[[], str], deliver: Callable[[str], None]):
+        super().__init__()
+        self.work = work
+        self.deliver = deliver
+
+    def run(self) -> None:
+        result = self.work()
+        try:
+            self.deliver(result)
+        except RuntimeError:
+            pass  # 报告页已销毁
+
+
 class ReportBridge(QObject):
     """
     通过 QWebChannel 暴露给页面的 Python 对象（页面里为 bridge）。
-    槽在界面线程执行，每次调用用独立连接读写库；返回 JSON 字符串 {"data": ..., "error": ...}。
-    改名 / 删除（#10）在槽内弹出 Qt 对话框（模态），data 为 {"done": 是否执行了}；记录中的课拒绝操作。
-    CSV 导出（#11）先弹出选择文件夹的对话框，data 为 {"done", "dir", "sessions"}。
+    页面只调用 request(请求编号, 方法名, JSON 参数)，结果经 response_signal(请求编号, JSON) 送回（#16）。
+    每个方法的结果为 JSON 字符串 {"data": ..., "error": ...}，每次调用用独立连接读写库：
+      - 读取（list_sessions / load_session / summarize_sessions）在后台线程执行，不阻塞界面线程
+      - 改名 / 删除（#10）在界面线程执行：在其中弹出 Qt 对话框（模态），data 为 {"done": 是否执行了}；记录中的课拒绝操作
+      - CSV 导出（#11）在界面线程选择文件夹，写文件在后台线程，开始写时发出 export_started_signal；
+        data 为 {"done", "dir", "sessions"}；同一时间只进行一个导出
+    各方法也可以在 Python 里直接同步调用（测试用）。
     """
     data_changed_signal = pyqtSignal()  # 课程记录可能有变化，页面应重新读取
+    response_signal = pyqtSignal(int, str)  # (请求编号, JSON)
+    export_started_signal = pyqtSignal(int)  # 已选好文件夹、开始在后台写文件
+
+    BACKGROUND = ("list_sessions", "load_session", "summarize_sessions")
+    FOREGROUND = ("rename_session", "delete_session")
+    EXPORTS = ("export_session", "export_all")
 
     def __init__(self, db_path: Optional[PathLike] = None, parent=None):
         super().__init__(parent)
         self.db_path = db_path  # None 表示使用 session_store.DEFAULT_DB_PATH
         self.export_dir: Optional[str] = None  # 上次导出选择的文件夹（本次运行内记住）
+        self.export_request: Optional[int] = None  # 进行中的导出的请求编号
+        self.closed = False  # shutdown 之后不再接受请求
+        # 线程池先于 relay 创建：销毁时线程池先析构（等后台任务结束），relay 仍在
+        self.pool = QThreadPool(self)
+        self.pool.setMaxThreadCount(2)
+        self._relay = _Relay(self)
+        self._relay.finished.connect(self._finish, Qt.QueuedConnection)
+
+    @pyqtSlot(int, str, str)
+    def request(self, request_id: int, method: str, args_json: str) -> None:
+        args = json.loads(args_json or "[]")
+        if self.closed:
+            return
+        if method in self.BACKGROUND:
+            func = getattr(self, method)
+            self.pool.start(_Task(lambda: func(*args), lambda result: self._relay.finished.emit(request_id, result)))
+        elif method in self.FOREGROUND:
+            self._relay.finished.emit(request_id, getattr(self, method)(*args))
+        elif method in self.EXPORTS:
+            self._start_export(request_id, [int(args[0])] if method == "export_session" else None)
+        else:
+            self._relay.finished.emit(request_id, self._error(f"未知的方法：{method}"))
+
+    def _finish(self, request_id: int, result: str) -> None:
+        if request_id == self.export_request:
+            self.export_request = None
+        self.response_signal.emit(request_id, result)
+
+    def wait_for_background(self, msecs: int = -1) -> bool:
+        """等待后台任务全部结束（waitForDone 期间释放 GIL，后台任务可以继续）"""
+        return self.pool.waitForDone(msecs)
+
+    @staticmethod
+    def _error(message: str) -> str:
+        print(f"❌ 报告页访问课程记录失败: {message}")
+        return json.dumps({"data": None, "error": message}, ensure_ascii=False)
 
     def _respond(self, func: Callable, *args) -> str:
         try:
@@ -46,43 +111,68 @@ class ReportBridge(QObject):
             data, error = None, str(e)
         return json.dumps({"data": data, "error": error}, ensure_ascii=False)
 
-    @pyqtSlot(result=str)
     def list_sessions(self) -> str:
         return self._respond(report_data.list_sessions)
 
-    @pyqtSlot(int, result=str)
     def load_session(self, session_id: int) -> str:
-        return self._respond(report_data.load_session, session_id)
+        return self._respond(report_data.load_session, int(session_id))
 
-    @pyqtSlot(result=str)
     def summarize_sessions(self) -> str:
         return self._respond(report_data.summarize_sessions)
 
-    @pyqtSlot(int, result=str)
     def rename_session(self, session_id: int) -> str:
-        return self._respond(self._rename, session_id)
+        return self._respond(self._rename, int(session_id))
 
-    @pyqtSlot(int, result=str)
     def delete_session(self, session_id: int) -> str:
-        return self._respond(self._delete, session_id)
+        return self._respond(self._delete, int(session_id))
 
-    @pyqtSlot(int, result=str)
     def export_session(self, session_id: int) -> str:
-        return self._respond(self._export, [session_id])
+        """同步导出（测试用；页面经 request 走后台）"""
+        return self._respond(self._export, [int(session_id)])
 
-    @pyqtSlot(result=str)
     def export_all(self) -> str:
         return self._respond(self._export, None)
 
     def _export(self, conn: sqlite3.Connection, session_ids: Optional[List[int]]) -> Dict[str, Any]:
+        self._check_exportable(conn, session_ids)
+        folder = self._choose_folder()
+        if not folder:
+            return {"done": False, "dir": None, "sessions": 0}
+        return self._export_to(conn, folder, session_ids)
+
+    def _start_export(self, request_id: int, session_ids: Optional[List[int]]) -> None:
+        """界面线程：检查并选择文件夹；写文件交给后台线程"""
+        reply = self._relay.finished.emit
+        if self.export_request is not None:
+            reply(request_id, self._error("已有导出正在进行"))
+            return
+        checked = json.loads(self._respond(self._check_exportable, session_ids))
+        if checked["error"]:
+            reply(request_id, json.dumps(checked, ensure_ascii=False))
+            return
+        folder = self._choose_folder()
+        if not folder:
+            reply(request_id, json.dumps({"data": {"done": False, "dir": None, "sessions": 0}, "error": None}))
+            return
+        self.export_request = request_id
+        self.export_started_signal.emit(request_id)
+        self.pool.start(_Task(lambda: self._respond(self._export_to, folder, session_ids),
+                              lambda result: reply(request_id, result)))
+
+    def _check_exportable(self, conn: sqlite3.Connection, session_ids: Optional[List[int]]) -> None:
         if session_ids is not None:
             self._editable(conn, session_ids[0])
         elif not export_csv.exportable_ids(conn):
             raise export_csv.ExportError("没有可导出的课程记录")
+
+    def _choose_folder(self) -> Optional[str]:
         folder = self.choose_export_dir(self.export_dir or QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation))
-        if not folder:
-            return {"done": False, "dir": None, "sessions": 0}
-        self.export_dir = folder
+        if folder:
+            self.export_dir = folder
+        return folder
+
+    @staticmethod
+    def _export_to(conn: sqlite3.Connection, folder: str, session_ids: Optional[List[int]]) -> Dict[str, Any]:
         result = export_csv.export(conn, Path(folder), session_ids)
         print(f"✅ 已导出 {result['sessions']} 节课的 CSV: {result['dir']}")
         return {"done": True, "dir": result["dir"], "sessions": result["sessions"]}
@@ -207,6 +297,14 @@ class ReportInterface(QWidget):
         self.vBoxLayout.addWidget(self.snapshot)
 
         self.webView.load(QUrl.fromLocalFile(str(WEB_DIR / "report.html")))
+
+    def shutdown(self) -> None:
+        """
+        销毁前调用（MainWindow.closeEvent、测试）：不再接受请求，等后台任务结束（#16）。
+        不能留到析构时再等：C++ 析构在持有 GIL 的情况下等线程池，后台任务拿不到 GIL，两者互相等待。
+        """
+        self.bridge.closed = True
+        self.bridge.wait_for_background()
 
     @contextmanager
     def page_frozen(self) -> Iterator[None]:

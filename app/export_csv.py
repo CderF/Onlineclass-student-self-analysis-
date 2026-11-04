@@ -64,9 +64,21 @@ def export(conn: sqlite3.Connection, parent_dir: Path, session_ids: Optional[Ite
     """
     在 parent_dir 下新建 export 文件夹并写入 CSV。session_ids 为 None 时导出全部可导出的课。
     先写到临时文件夹，全部写完后再改名，失败时不留下写了一半的导出。
+    全部查询在同一个读事务内完成：导出途中其他连接删除或改名，导出内容仍前后一致（#16，导出在后台线程进行）。
     返回 {"dir": 导出文件夹, "sessions": 课数, "rows": {表名: 行数}}。
     """
-    parent_dir = Path(parent_dir)
+    own_transaction = not conn.in_transaction
+    if own_transaction:
+        conn.execute("BEGIN")
+    try:
+        return _export(conn, Path(parent_dir), session_ids, now)
+    finally:
+        if own_transaction:
+            conn.rollback()
+
+
+def _export(conn: sqlite3.Connection, parent_dir: Path, session_ids: Optional[Iterable[int]],
+            now: Optional[float]) -> Dict[str, Any]:
     if session_ids is None:
         ids = exportable_ids(conn)
     else:

@@ -308,7 +308,7 @@ def main(db: Path, perf_db: Path, shot_dir: Path):
     report_data.summarize_sessions(conn)
     ms = (time.perf_counter() - start) * 1000
     conn.close()
-    check("汇总 60 节 90 分钟课程 < 1 秒", ms < 1000, f"{ms:.0f} ms（界面线程内同步执行）")
+    check("汇总 60 节 90 分钟课程 < 1 秒", ms < 1000, f"{ms:.0f} ms（直接同步调用；页面上在后台线程，见 verify_issue16）")
     report.bridge.db_path = perf_db
     run_js(report.page, "document.getElementById('tab-single').click()")
     QTest.qWait(300)

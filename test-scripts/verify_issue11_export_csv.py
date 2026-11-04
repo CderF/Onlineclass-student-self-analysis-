@@ -10,7 +10,7 @@
      用每个事件真实记录的墙上时间检验「听课时间 → 墙上时间」换算（跨暂停，误差应在一帧以内）
   3. 文件格式：UTF-8 BOM、CRLF、可按 UTF-8 解码（纯文本，不含图像）
   4. 录制中导出全部：记录中的课不在导出里，记录继续写入、无「記録エラー」
-  5. 耗时：60 节 90 分钟课程全部导出的时间与体积（界面线程内同步执行）
+  5. 耗时：60 节 90 分钟课程全部导出的时间与体积（直接同步调用 export_csv.export；页面上的导出在后台线程，见 verify_issue16）
 选择文件夹的对话框（macOS 原生）无法自动操作，脚本里替换为固定的临时文件夹；对话框本身需人工确认。
 数据库与导出写在临时目录，不碰 data/。任一检查失败时退出码为 1。
 """
@@ -290,7 +290,7 @@ def main(db: Path, perf_db: Path, out: Path):
     conn.close()
     size = sum(p.stat().st_size for p in Path(res["dir"]).iterdir())
     check("全部导出 60 节 90 分钟课程 < 5 秒", sec < 5.0,
-          f"{sec:.2f} 秒，samples {res['rows']['samples']} 行，共 {size / 1024 / 1024:.1f} MB（界面线程内同步执行）")
+          f"{sec:.2f} 秒，samples {res['rows']['samples']} 行，共 {size / 1024 / 1024:.1f} MB（直接同步调用 export_csv.export；页面上的导出在后台线程，见 verify_issue16）")
 
 
 if __name__ == "__main__":

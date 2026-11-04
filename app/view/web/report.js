@@ -8,14 +8,51 @@ const FONT = getComputedStyle(document.documentElement).getPropertyValue("--font
 const state = {
   bridge: null, sessions: [], selectedId: null, chart: null, refreshSeq: 0, view: "single",
   summary: null, summaryShown: [], summaryChart: null, summarySeq: 0, courseFilter: "all",
+  requestSeq: 0, pending: new Map(), loadingTimer: null, exporting: false,
 };
+
+// 读取在 Python 的后台线程进行（#16）；超过这个时间仍未返回时显示「読み込み中…」
+const READS = new Set(["list_sessions", "load_session", "summarize_sessions"]);
+const LOADING_DELAY_MS = 300;
 
 const $ = (id) => document.getElementById(id);
 
+// 调用 Python：request 立即返回，结果经 response_signal 按请求编号送回
 function call(method, ...args) {
+  const id = ++state.requestSeq;
   return new Promise((resolve) => {
-    state.bridge[method](...args, (json) => resolve(JSON.parse(json)));
+    state.pending.set(id, { resolve, read: READS.has(method) });
+    updateLoading();
+    state.bridge.request(id, method, JSON.stringify(args));
   });
+}
+
+function onResponse(id, json) {
+  const entry = state.pending.get(id);
+  if (!entry) return;
+  state.pending.delete(id);
+  updateLoading();
+  entry.resolve(JSON.parse(json));
+}
+
+function readsPending() {
+  return [...state.pending.values()].some((p) => p.read);
+}
+
+// body[data-loading] 为是否有读取进行中；指示在读取超过 LOADING_DELAY_MS 后才出现，快的读取不闪烁
+function updateLoading() {
+  const busy = readsPending();
+  document.body.dataset.loading = String(busy);
+  if (!busy) {
+    clearTimeout(state.loadingTimer);
+    state.loadingTimer = null;
+    $("loading").hidden = true;
+  } else if (state.loadingTimer === null && $("loading").hidden) {
+    state.loadingTimer = setTimeout(() => {
+      state.loadingTimer = null;
+      $("loading").hidden = !readsPending();
+    }, LOADING_DELAY_MS);
+  }
 }
 
 function formatDate(unixSeconds) {
@@ -61,18 +98,18 @@ const ACTIONS = [
 ];
 
 function renderRecordTable() {
-  $("export-all").disabled = !state.sessions.some((s) => s.status !== "recording");
+  $("export-all").disabled = state.exporting || !state.sessions.some((s) => s.status !== "recording");
   $("record-table").tBodies[0].replaceChildren(...state.sessions.map((s) => {
     const cells = [formatDate(s.started_at), s.course_name || "授業名なし", formatDuration(s.seconds),
       STATUS_LABELS[s.status] || s.status].map((text) => Object.assign(document.createElement("td"), { textContent: text }));
     if (!s.course_name) cells[1].className = "no-name";
-    const locked = s.status === "recording";
+    const locked = s.status === "recording" || state.exporting;
     const actions = document.createElement("td");
     actions.append(...ACTIONS.map((a) => {
       const btn = Object.assign(document.createElement("button"),
         { type: "button", className: a.className, textContent: a.label, disabled: locked });
       btn.dataset.action = a.key;
-      if (locked) btn.title = LOCKED_TITLE;
+      if (s.status === "recording") btn.title = LOCKED_TITLE;
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         a.key === "export" ? exportCsv(a.slot, s.id) : manage(a.slot, s.id);
@@ -96,6 +133,7 @@ function notify(tone, text) {
 
 // 改名 / 删除：确认对话框由 Python 弹出（Qt），返回后重新读取列表；body[data-manage] 为 busy / idle
 async function manage(slot, id) {
+  if (state.exporting) return;
   document.body.dataset.manage = "busy";
   const res = await call(slot, id);
   notify("error", res.error ? "操作できませんでした。もう一度お試しください。" : "");
@@ -103,10 +141,18 @@ async function manage(slot, id) {
   document.body.dataset.manage = "idle";
 }
 
-// CSV 导出（#11）：选择文件夹的对话框由 Python 弹出；完成后显示导出位置
+// CSV 导出（#11）：选择文件夹的对话框由 Python 弹出，写文件在后台（#16）；期间所有管理按钮不可用
+function setExporting(on) {
+  state.exporting = on;
+  renderRecordTable();
+}
+
 async function exportCsv(slot, ...args) {
+  if (state.exporting) return;
   document.body.dataset.manage = "busy";
+  setExporting(true);
   const res = await call(slot, ...args);
+  setExporting(false);
   if (res.error) {
     notify("error", "書き出せませんでした。書き出し先を確認して、もう一度お試しください。");
     await refresh();
@@ -309,6 +355,8 @@ window.addEventListener("resize", () => {
 
 new QWebChannel(qt.webChannelTransport, (channel) => {
   state.bridge = channel.objects.bridge;
+  state.bridge.response_signal.connect(onResponse);
+  state.bridge.export_started_signal.connect(() => notify("ok", "書き出し中…"));
   state.bridge.data_changed_signal.connect(refresh);
   refresh();
 });

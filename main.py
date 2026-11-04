@@ -66,6 +66,9 @@ class MainWindow(FluentWindow):
             print("正在安全释放摄像头资源...")
             self.monitorInterface.camera_thread.stop()  # 内部会等待线程彻底结束
 
+        # 报告页的后台读取 / 导出（#16）要在窗口销毁前等完：销毁时持有 GIL，后台任务无法继续，会互相等待
+        self.reportInterface.shutdown()
+
         # 接受关闭事件，正常退出程序
         event.accept()
 

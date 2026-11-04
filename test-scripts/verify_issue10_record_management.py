@@ -195,7 +195,9 @@ def main(db: Path, shot_dir: Path):
         return (c.red() + c.green() + c.blue()) / 3
 
     def before_dialog():
-        img = screen_image().toImage()
+        shot = screen_image()
+        shot.save(str(shot_dir / "before_dialog_screen.png"))
+        img = shot.toImage()
         on_screen["bg_before"] = [lum(img, x, y) for x, y in bg_points]
 
     def capture_screen(d, name):
@@ -212,11 +214,17 @@ def main(db: Path, shot_dir: Path):
                 b = g_img.pixelColor(int(x * g_img.width() / w.width()), int(y * g_img.height() / w.height()))
                 diff += abs(a.red() - b.red()) + abs(a.green() - b.green()) + abs(a.blue() - b.blue())
                 n += 1
-        ratio = [lum(s_img, x, y) / b0 for (x, y), b0 in zip(bg_points, on_screen["bg_before"])]
-        on_screen[name] = {"diff": diff / n / 3, "ratio": ratio, "page_hidden": not report.webView.isVisible()}
+        # 屏幕锁定或休眠时截到的是空白（全 0）画面，无法检查
+        blank = s_img.width() < w.width() * 1.5 and max(on_screen["bg_before"]) == 0
+        ratio = [] if blank else [lum(s_img, x, y) / max(b0, 1) for (x, y), b0 in zip(bg_points, on_screen["bg_before"])]
+        on_screen[name] = {"diff": diff / n / 3, "ratio": ratio, "page_hidden": not report.webView.isVisible(),
+                           "blank": blank}
 
     def check_screen(name, label):
         res = on_screen.get(name, {})
+        if res.get("blank"):
+            check(f"屏幕实际显示：{label}在最上层（#18）", False, "截到的屏幕画面是空白：屏幕已锁定或休眠，请解锁后重跑")
+            return
         ok = (res.get("diff", 99) < 3 and all(0.65 <= v <= 0.75 for v in res.get("ratio", [0]))
               and res.get("page_hidden") and report.webView.isVisible() and not report.snapshot.isVisible())
         check(f"屏幕实际显示：{label}在最上层、网页背景按遮罩变暗，关闭后网页恢复（#18）", ok,

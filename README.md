@@ -216,6 +216,25 @@ $$\text{Score}(t) = \text{Score}_{\text{before\_absent}} \cdot \left[1 - \left(\
 
 ---
 
+## 📤 CSV 导出（实验分析用）
+
+分析报告「記録の管理」页可导出单节课（每行的「CSV」）或全部课程（「すべて CSV で書き出す」）。所选位置下新建文件夹 `self_analysis_export_<日期_时刻>`（单节加 `_session<ID>`），内含五个 CSV（`app/export_csv.py`）：
+
+| 文件 | 一行 | 列 |
+|---|---|---|
+| `sessions.csv` | 一节课 | `session_id`、`course_name`、`status`、`started_at`、`ended_at`、`listening_seconds`（听课秒数）、`avg_score`、`baseline_pitch`、`baseline_yaw` |
+| `samples.csv` | 听课时间轴上的 1 秒 | `session_id`、`course_name`、`t`、`wall_time`、`score`、`fatigue_index`、`cognitive_state`、`spatial_state`、`face_ratio`、`delta_pitch`、`delta_yaw`、`frame_count` |
+| `events.csv` | 空间状态区间或警报 | `session_id`、`course_name`、`kind`、`type`、`t_start`、`t_end`、`wall_start` |
+| `pauses.csv` | 一次暂停 | `session_id`、`course_name`、`t`、`paused_at`、`resumed_at` |
+| `problems.csv` | 一个问题时段（与报告页判定相同） | `session_id`、`course_name`、`category`、`start`、`end`、`duration`、`wall_start`、`wall_end` |
+
+- 长格式，各表按 `session_id` 关联；`t` / `start` / `end` 为听课时间轴上的秒（不含暂停），各列含义同数据库（`docs/adr/0002-session-storage-schema.md`）。
+- 墙上时间为 Unix 秒，并附同名 `*_iso` 列（本机时区的 ISO 8601，带时差），用于与外部问卷对齐。`problems.csv` 的墙上时间由所在秒的 `wall_time` 加秒内偏移换算，误差在一帧以内。
+- 只含数值与标签，不含任何图像。记录中的课不导出。
+- 编码为 UTF-8 带 BOM、CRLF 换行（Excel 直接打开）。pandas 读取：`pd.read_csv(path, encoding="utf-8-sig", float_precision="round_trip")`；不加 `float_precision` 时约有一成浮点数末位与写出的值不同。
+
+---
+
 ## 📝 开发者规范 (Developer Guidelines)
 
 为保障系统的稳定性与界面流畅度，在修改或扩展本项目时，请严格遵守以下开发规范：

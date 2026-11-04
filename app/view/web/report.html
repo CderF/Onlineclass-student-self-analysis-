@@ -86,8 +86,11 @@
     <section id="view-manage" class="view" role="tabpanel" aria-labelledby="tab-manage" hidden>
       <p id="manage-message" class="notice" hidden></p>
       <div class="card">
-        <h2>記録の一覧</h2>
-        <p class="hint">行をクリックすると、その授業を「授業ごと」で表示します。記録中の授業は変更・削除できません。</p>
+        <div class="card-header">
+          <h2>記録の一覧</h2>
+          <button type="button" id="export-all" class="row-action">すべて CSV で書き出す</button>
+        </div>
+        <p class="hint">行をクリックすると、その授業を「授業ごと」で表示します。記録中の授業は変更・削除・書き出しできません。CSV は数値のみで、画像は含まれません。</p>
         <table id="record-table" class="table records">
           <thead><tr><th>日時</th><th>授業名</th><th>受講時間</th><th>状態</th><th>操作</th></tr></thead>
           <tbody></tbody>

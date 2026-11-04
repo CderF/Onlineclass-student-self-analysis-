@@ -53,13 +53,15 @@ function renderSessionList() {
 
 // ---------- 記録の管理（#10） ----------
 
-const LOCKED_TITLE = "記録中の授業は変更・削除できません";
+const LOCKED_TITLE = "記録中の授業は変更・削除・書き出しできません";
 const ACTIONS = [
+  { key: "export", label: "CSV", slot: "export_session", className: "row-action" },
   { key: "rename", label: "名前を変更", slot: "rename_session", className: "row-action" },
   { key: "delete", label: "削除", slot: "delete_session", className: "row-action danger" },
 ];
 
 function renderRecordTable() {
+  $("export-all").disabled = !state.sessions.some((s) => s.status !== "recording");
   $("record-table").tBodies[0].replaceChildren(...state.sessions.map((s) => {
     const cells = [formatDate(s.started_at), s.course_name || "授業名なし", formatDuration(s.seconds),
       STATUS_LABELS[s.status] || s.status].map((text) => Object.assign(document.createElement("td"), { textContent: text }));
@@ -73,7 +75,7 @@ function renderRecordTable() {
       if (locked) btn.title = LOCKED_TITLE;
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        manage(a.slot, s.id);
+        a.key === "export" ? exportCsv(a.slot, s.id) : manage(a.slot, s.id);
       });
       return btn;
     }));
@@ -86,13 +88,31 @@ function renderRecordTable() {
   }));
 }
 
+function notify(tone, text) {
+  $("manage-message").hidden = !text;
+  $("manage-message").textContent = text;
+  $("manage-message").dataset.tone = tone;
+}
+
 // 改名 / 删除：确认对话框由 Python 弹出（Qt），返回后重新读取列表；body[data-manage] 为 busy / idle
 async function manage(slot, id) {
   document.body.dataset.manage = "busy";
   const res = await call(slot, id);
-  $("manage-message").hidden = !res.error;
-  $("manage-message").textContent = res.error ? "操作できませんでした。もう一度お試しください。" : "";
+  notify("error", res.error ? "操作できませんでした。もう一度お試しください。" : "");
   if (res.error || res.data.done) await refresh();
+  document.body.dataset.manage = "idle";
+}
+
+// CSV 导出（#11）：选择文件夹的对话框由 Python 弹出；完成后显示导出位置
+async function exportCsv(slot, ...args) {
+  document.body.dataset.manage = "busy";
+  const res = await call(slot, ...args);
+  if (res.error) {
+    notify("error", "書き出せませんでした。書き出し先を確認して、もう一度お試しください。");
+    await refresh();
+  } else if (res.data.done) {
+    notify("ok", `${res.data.sessions} 件の記録を CSV で書き出しました：${res.data.dir}`);
+  }
   document.body.dataset.manage = "idle";
 }
 
@@ -280,6 +300,7 @@ $("session-select").addEventListener("change", (e) => {
 });
 
 $("course-filter").addEventListener("change", (e) => setCourseFilter(e.target.value));
+$("export-all").addEventListener("click", () => exportCsv("export_all"));
 
 window.addEventListener("resize", () => {
   if (state.chart) state.chart.resize();

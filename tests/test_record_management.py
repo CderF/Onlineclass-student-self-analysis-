@@ -192,9 +192,9 @@ def test_table_lists_all_sessions(db, conn, open_report):
     assert by_id[rec]["cells"][3] == "記録中" and by_id[empty]["cells"][2] == "0分0秒"
     for sid in (old, mid):
         assert labels[str(sid)].startswith(by_id[sid]["cells"][0])  # 日時与下拉框一致
-        assert by_id[sid]["buttons"] == [["rename", "名前を変更", False, ""], ["delete", "削除", False, ""]]
+        assert by_id[sid]["buttons"] == [["export", "CSV", False, ""], ["rename", "名前を変更", False, ""], ["delete", "削除", False, ""]]
     for sid in (rec, empty):
-        assert all(b[2] is True and b[3] == "記録中の授業は変更・削除できません" for b in by_id[sid]["buttons"])
+        assert all(b[2] is True and b[3] == "記録中の授業は変更・削除・書き出しできません" for b in by_id[sid]["buttons"])
     assert by_id[empty]["selected"] == "true"   # 默认选中最新的
 
 

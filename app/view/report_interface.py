@@ -4,14 +4,14 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from PyQt5.QtCore import QObject, QUrl, Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QObject, QStandardPaths, QUrl, Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
 from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineProfile, QWebEngineView
-from PyQt5.QtWidgets import QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QFileDialog, QVBoxLayout, QWidget
 from qfluentwidgets import MessageBox
 
-from app import report_data, session_store
+from app import export_csv, report_data, session_store
 from app.session_store import PathLike
 from app.view.course_name_dialog import RenameCourseDialog
 
@@ -24,12 +24,14 @@ class ReportBridge(QObject):
     通过 QWebChannel 暴露给页面的 Python 对象（页面里为 bridge）。
     槽在界面线程执行，每次调用用独立连接读写库；返回 JSON 字符串 {"data": ..., "error": ...}。
     改名 / 删除（#10）在槽内弹出 Qt 对话框（模态），data 为 {"done": 是否执行了}；记录中的课拒绝操作。
+    CSV 导出（#11）先弹出选择文件夹的对话框，data 为 {"done", "dir", "sessions"}。
     """
     data_changed_signal = pyqtSignal()  # 课程记录可能有变化，页面应重新读取
 
     def __init__(self, db_path: Optional[PathLike] = None, parent=None):
         super().__init__(parent)
         self.db_path = db_path  # None 表示使用 session_store.DEFAULT_DB_PATH
+        self.export_dir: Optional[str] = None  # 上次导出选择的文件夹（本次运行内记住）
 
     def _respond(self, func: Callable, *args) -> str:
         try:
@@ -63,6 +65,27 @@ class ReportBridge(QObject):
     def delete_session(self, session_id: int) -> str:
         return self._respond(self._delete, session_id)
 
+    @pyqtSlot(int, result=str)
+    def export_session(self, session_id: int) -> str:
+        return self._respond(self._export, [session_id])
+
+    @pyqtSlot(result=str)
+    def export_all(self) -> str:
+        return self._respond(self._export, None)
+
+    def _export(self, conn: sqlite3.Connection, session_ids: Optional[List[int]]) -> Dict[str, Any]:
+        if session_ids is not None:
+            self._editable(conn, session_ids[0])
+        elif not export_csv.exportable_ids(conn):
+            raise export_csv.ExportError("没有可导出的课程记录")
+        folder = self.choose_export_dir(self.export_dir or QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation))
+        if not folder:
+            return {"done": False, "dir": None, "sessions": 0}
+        self.export_dir = folder
+        result = export_csv.export(conn, Path(folder), session_ids)
+        print(f"✅ 已导出 {result['sessions']} 节课的 CSV: {result['dir']}")
+        return {"done": True, "dir": result["dir"], "sessions": result["sessions"]}
+
     def _rename(self, conn: sqlite3.Connection, session_id: int) -> Dict[str, bool]:
         session = self._editable(conn, session_id)
         accepted, name = self.ask_course_name(session_store.list_course_names(conn), session["course_name"])
@@ -91,6 +114,10 @@ class ReportBridge(QObject):
         """改课程名对话框；返回 (是否保存, 新课程名)。测试时替换"""
         dialog = RenameCourseDialog(course_names, current, self._dialog_parent())
         return (True, dialog.course_name()) if dialog.exec() else (False, None)
+
+    def choose_export_dir(self, start: str) -> Optional[str]:
+        """选择导出位置（在其中新建导出文件夹）；取消时返回 None。测试时替换"""
+        return QFileDialog.getExistingDirectory(self._dialog_parent(), "CSV の書き出し先を選択", start) or None
 
     def confirm_delete(self, session: Dict[str, Any]) -> bool:
         """删除确认对话框。测试时替换"""

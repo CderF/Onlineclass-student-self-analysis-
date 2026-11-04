@@ -1,5 +1,7 @@
 import sys
-from PyQt5.QtCore import Qt
+from typing import Optional
+
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QIcon, QFont
 from qfluentwidgets import (
@@ -9,6 +11,7 @@ from qfluentwidgets import (
 from qfluentwidgets import FluentIcon as FIF
 # Import our custom interfaces
 from app import session_store
+from app.single_instance import SingleInstance
 from app.view.monitor_interface import MonitorInterface
 from app.view.report_interface import ReportInterface  # 同时导入 QtWebEngineWidgets，必须早于创建 QApplication
 
@@ -55,6 +58,18 @@ class MainWindow(FluentWindow):
             position=NavigationItemPosition.TOP
         )
 
+    def bring_to_front(self):
+        """再次启动程序时调出已开的窗口（#13）：最小化的恢复，并放到最前面"""
+        self.setWindowState((self.windowState() & ~Qt.WindowMinimized) | Qt.WindowActive)
+        self.show()
+        self._activate()
+        # macOS：刚从最小化恢复时的激活会被忽略（实测立即与 0 ms 都无效、50 ms 起有效），稍后再激活一次
+        QTimer.singleShot(200, self._activate)
+
+    def _activate(self):
+        self.raise_()
+        self.activateWindow()
+
     # 安全退出拦截
     def closeEvent(self, event):
         """
@@ -71,6 +86,31 @@ class MainWindow(FluentWindow):
 
         # 接受关闭事件，正常退出程序
         event.accept()
+
+
+def start_instance() -> Optional[SingleInstance]:
+    """
+    启动时先拿单实例锁（#13），拿到后再把上次崩溃遗留的课程记录标为「未正常结束」。
+    顺序不能反：否则第二个实例会把正在运行的实例正在记录的课程标为 interrupted。
+    已有实例在运行时通知它调出窗口，返回 None。需在 QApplication 创建之后调用。
+    """
+    instance = SingleInstance()
+    if not instance.acquire():
+        if instance.notify_running():
+            print("程序已在运行，已调出已打开的窗口")
+        else:
+            print("⚠️ 程序已在运行，但无法调出已打开的窗口")
+        return None
+
+    try:
+        conn = session_store.connect()
+        count = session_store.mark_interrupted_sessions(conn)
+        conn.close()
+        if count:
+            print(f"⚠️ 已将 {count} 条未正常结束的课程记录标记为 interrupted")
+    except Exception as e:
+        print(f"❌ 打开课程记录数据库失败: {e}")
+    return instance
 
 
 if __name__ == "__main__":
@@ -90,18 +130,14 @@ if __name__ == "__main__":
     app.setFont(QFont("Hiragino Sans", 10))
     setFontFamilies(["Hiragino Sans", "Segoe UI"])  # qfluentwidgets 组件不跟随 app 字体，需单独设置
 
-    # 上次运行崩溃遗留的课程记录标为「未正常结束」
-    try:
-        conn = session_store.connect()
-        count = session_store.mark_interrupted_sessions(conn)
-        conn.close()
-        if count:
-            print(f"⚠️ 已将 {count} 条未正常结束的课程记录标记为 interrupted")
-    except Exception as e:
-        print(f"❌ 打开课程记录数据库失败: {e}")
+    instance = start_instance()
+    if instance is None:
+        sys.exit(0)
+    app.aboutToQuit.connect(instance.release)
 
     # 2. Create and show window
     w = MainWindow()
+    instance.activated.connect(w.bring_to_front)
     w.show()
 
     sys.exit(app.exec())

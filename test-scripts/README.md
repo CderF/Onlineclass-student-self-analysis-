@@ -21,3 +21,4 @@
 | `verify_issue17_secure_delete.py` | #17 | 删除后在数据库文件与 WAL 中查找被删课程的课程名与特征浮点数：对照实验（关闭 secure_delete、不清空 WAL 时能找到残留）、真实窗口录制中删除 90 分钟课程、删除后进程被 SIGKILL 及重启、删除耗时 |
 | `verify_issue16_ui_responsiveness.py` | #16 | 60 节 90 分钟课程的数据库上用 1 ms 定时器测界面线程单次最大阻塞：打开报告页、切到「全体の推移」、切换课程、全部导出 CSV（每项 < 100 ms），结果与同步调用一致、「読み込み中…」与导出期间按钮不可用；`--baseline` 只打印数值（修改前：汇总 497 ms、导出 2543 ms） |
 | `verify_issue12_start_responsiveness.py` | #12 | 原生窗口真实 Qt 鼠标点「開始」：点击处理耗时、6 秒内界面线程单次最大阻塞（< 100 ms）与后台各阶段时间线（模型加载、打开摄像头、首帧）；模型在后台线程构造、暂停 / 继续不重复加载；表情模型加载失败时窗口出现「モデルエラー」提示且监控继续；`--real-camera` 用真实摄像头（需在有摄像头权限的终端里运行） |
+| `verify_issue13_single_instance.py` | #13 | 按真实启动流程（runpy 执行 `main.py`）启动多个进程：A 记录中（窗口最小化、Finder 在前台）时启动 B，B 立刻退出、A 的窗口恢复并成为前台程序、记录仍为 recording 且继续增加；A 暂停中启动 B 不受影响，继续后结束为 completed；A 被 SIGKILL 后 C 接管失效的锁并把 A 的记录标为 interrupted。屏幕锁定时退出码 2 |

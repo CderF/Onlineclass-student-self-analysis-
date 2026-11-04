@@ -63,6 +63,8 @@ def connect(db_path: Optional[PathLike] = None) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # 删除的数据用 0 覆盖、不留在文件的空闲空间里（#17）；默认值取决于 SQLite 的编译选项，因此显式开启
+    conn.execute("PRAGMA secure_delete = ON")
     conn.execute("PRAGMA journal_mode = WAL")
 
     version = conn.execute("PRAGMA user_version").fetchone()[0]
@@ -113,10 +115,26 @@ def rename_session(conn: sqlite3.Connection, session_id: int, name: Optional[str
 
 
 def delete_session(conn: sqlite3.Connection, session_id: int) -> bool:
-    """报告页删除记录（#10）：样本、事件、暂停随外键级联删除；记录中的课不删。返回是否删了"""
+    """
+    报告页删除记录（#10）：样本、事件、暂停随外键级联删除；记录中的课不删。返回是否删了。
+    删除后把 WAL 写回主库并清空（#17），否则 WAL 里仍留着这些数据写入时的旧页面。
+    """
     with conn:
         cur = conn.execute("DELETE FROM sessions WHERE id = ? AND status != 'recording'", (session_id,))
-    return cur.rowcount > 0
+    if cur.rowcount == 0:
+        return False
+    if not truncate_wal(conn):
+        print("⚠️ 删除后未能清空 WAL（另一连接正在读取），旧数据留在 WAL 中，直到最后一个连接关闭时写回并删除")
+    return True
+
+
+def truncate_wal(conn: sqlite3.Connection) -> bool:
+    """
+    把 WAL 中的内容写回主库并把 WAL 截断为 0 字节。有其他连接仍在读取旧快照时无法完成（返回 False）；
+    这时 SQLite 会在最后一个连接关闭时写回并删除 WAL。等待写锁最多为连接的 busy timeout（默认 5 秒）。
+    """
+    busy, _, _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    return busy == 0
 
 
 def list_course_names(conn: sqlite3.Connection) -> List[str]:

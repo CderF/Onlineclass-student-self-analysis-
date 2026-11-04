@@ -52,6 +52,7 @@ Research prototype for a paper (student self-analysis of engagement in online cl
 - Create one `SessionRecorder` per capture segment, inside `CameraThread.run()`: sqlite connections are thread-bound.
   - On `pause(wall)` it records a pause row whose `t` is the **last frame's** listening time. A segment with no frames writes no row.
   - The next recorder resumes at `floor(t) + 1`, so the timeline is continuous by construction (#15).
+- Deleted data must not stay recoverable in the files (#17). `connect()` sets `PRAGMA secure_delete = ON` explicitly, because the default depends on how SQLite was built. `delete_session` then runs `truncate_wal` (`wal_checkpoint(TRUNCATE)`), because the WAL still holds the old pages from when the data was written. If another connection still holds an older read snapshot, the truncate cannot finish; the WAL is then checkpointed and removed when the last connection closes.
 - Spatial-state codes and cognitive-state labels are persisted. Renaming them requires a data migration.
 - Wiring (#4), all in `CameraThread`:
   - The session row is created when the camera first opens.

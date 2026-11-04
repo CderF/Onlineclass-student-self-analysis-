@@ -1,14 +1,15 @@
 import json
 import sqlite3
 import time
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, ContextManager, Dict, Iterator, List, Optional, Tuple
 
-from PyQt5.QtCore import QObject, QStandardPaths, QUrl, Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QObject, QPoint, QRect, QStandardPaths, QUrl, Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtWebEngineCore import QWebEngineUrlRequestInfo, QWebEngineUrlRequestInterceptor
 from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineProfile, QWebEngineView
-from PyQt5.QtWidgets import QFileDialog, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QFileDialog, QLabel, QSizePolicy, QVBoxLayout, QWidget
 from qfluentwidgets import MessageBox
 
 from app import export_csv, report_data, session_store
@@ -110,10 +111,17 @@ class ReportBridge(QObject):
         parent = self.parent()
         return parent.window() if isinstance(parent, QWidget) else None
 
+    def _page_frozen(self) -> ContextManager[None]:
+        """遮罩对话框（qfluentwidgets，窗口内的子控件）显示期间，用截图替换网页（#18）"""
+        freeze = getattr(self.parent(), "page_frozen", None)
+        return freeze() if freeze else nullcontext()
+
     def ask_course_name(self, course_names: List[str], current: Optional[str]) -> Tuple[bool, Optional[str]]:
         """改课程名对话框；返回 (是否保存, 新课程名)。测试时替换"""
         dialog = RenameCourseDialog(course_names, current, self._dialog_parent())
-        return (True, dialog.course_name()) if dialog.exec() else (False, None)
+        with self._page_frozen():
+            accepted = dialog.exec()
+        return (True, dialog.course_name()) if accepted else (False, None)
 
     def choose_export_dir(self, start: str) -> Optional[str]:
         """选择导出位置（在其中新建导出文件夹）；取消时返回 None。测试时替换"""
@@ -130,7 +138,8 @@ class ReportBridge(QObject):
         )
         box.yesButton.setText("削除")
         box.cancelButton.setText("キャンセル")
-        return bool(box.exec())
+        with self._page_frozen():
+            return bool(box.exec())
 
 
 class LocalOnlyInterceptor(QWebEngineUrlRequestInterceptor):
@@ -186,11 +195,37 @@ class ReportInterface(QWidget):
         self.channel.registerObject("bridge", self.bridge)
         self.page.setWebChannel(self.channel)
 
+        # 弹出遮罩对话框期间代替网页显示的截图（见 page_frozen）
+        self.snapshot = QLabel(self)
+        self.snapshot.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.snapshot.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.snapshot.hide()
+
         self.vBoxLayout = QVBoxLayout(self)
         self.vBoxLayout.setContentsMargins(0, 0, 0, 0)
         self.vBoxLayout.addWidget(self.webView)
+        self.vBoxLayout.addWidget(self.snapshot)
 
         self.webView.load(QUrl.fromLocalFile(str(WEB_DIR / "report.html")))
+
+    @contextmanager
+    def page_frozen(self) -> Iterator[None]:
+        """
+        期间用网页的截图代替网页（#18）。网页内容由 GPU 合成，会盖在同一窗口内的普通子控件之上，
+        qfluentwidgets 的遮罩对话框（MessageBoxBase / MessageBox）因此被网页挡住；换成截图后遮罩与对话框正常显示在最上层。
+        """
+        # 从窗口截取网页所在区域：网页背景透明，单独截网页视图时透明处会变成黑色
+        window = self.webView.window()
+        self.snapshot.setPixmap(window.grab(QRect(self.webView.mapTo(window, QPoint(0, 0)), self.webView.size())))
+        # 先隐藏再显示（恢复时相反）：两者不会同时可见，布局不会把高度分给两者
+        self.webView.hide()
+        self.snapshot.show()
+        try:
+            yield
+        finally:
+            self.snapshot.hide()
+            self.snapshot.clear()
+            self.webView.show()
 
     def showEvent(self, event: Any) -> None:
         super().showEvent(event)

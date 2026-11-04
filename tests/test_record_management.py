@@ -321,3 +321,86 @@ def test_summary_reflects_deletion(db, conn, open_report):
     names = json.loads(run_js(report.page, "JSON.stringify([...document.querySelectorAll('#course-table tbody tr')].map(tr => tr.cells[0].textContent))"))
     assert names == ["英語"]
     assert report_data.summarize_sessions(conn)["courses"][0]["course_name"] == "英語"
+
+
+# ---------- 对话框显示期间用截图代替网页（#18） ----------
+
+def page_shown(report):
+    return report.webView.isVisible(), report.snapshot.isVisible()
+
+
+def test_page_frozen_swaps_in_snapshot(db, conn, open_report):
+    lesson(db, conn, T0, 30, name="英語")
+    report = open_report()
+    open_manage(report)
+    assert page_shown(report) == (True, False)
+    from PyQt5.QtTest import QTest
+    area = report.webView.geometry()
+    with report.page_frozen():
+        QTest.qWait(50)   # 让布局处理完
+        assert page_shown(report) == (False, True)
+        pix = report.snapshot.pixmap()
+        assert not pix.isNull()
+        assert (pix.width() / pix.devicePixelRatio(), pix.height() / pix.devicePixelRatio()) == (area.width(), area.height())
+        assert report.snapshot.geometry() == area   # 占据网页原来的位置
+    QTest.qWait(50)
+    assert page_shown(report) == (True, False) and report.webView.geometry() == area
+    assert report.snapshot.pixmap() is None or report.snapshot.pixmap().isNull()
+
+
+def test_page_frozen_restores_on_error(db, conn, open_report):
+    report = open_report()
+    with pytest.raises(RuntimeError):
+        with report.page_frozen():
+            raise RuntimeError("dialog failed")
+    assert page_shown(report) == (True, False)
+
+
+@pytest.mark.parametrize("kind", ["delete", "rename"])
+def test_real_dialog_methods_freeze_page(open_report, monkeypatch, kind):
+    """真实的 confirm_delete / ask_course_name 在对话框 exec 期间网页被截图代替，之后恢复"""
+    from app.view import report_interface
+    report = open_report()
+    seen = []
+
+    class FakeDialog:
+        def __init__(self, *args, **kwargs):
+            self.yesButton = self.cancelButton = self
+
+        def setText(self, text):
+            pass
+
+        def exec(self):
+            seen.append(page_shown(report))
+            return 1
+
+        def course_name(self):
+            return "線形代数"
+
+    monkeypatch.setattr(report_interface, "MessageBox", FakeDialog)
+    monkeypatch.setattr(report_interface, "RenameCourseDialog", FakeDialog)
+    if kind == "delete":
+        assert report.bridge.confirm_delete({"started_at": T0, "course_name": None}) is True
+    else:
+        assert report.bridge.ask_course_name(["英語"], "英語") == (True, "線形代数")
+    assert seen == [(False, True)] and page_shown(report) == (True, False)
+
+
+def test_bridge_without_report_parent_does_not_freeze(qapp, monkeypatch):
+    from PyQt5.QtWidgets import QWidget
+    from app.view import report_interface
+    host = QWidget()
+    bridge = report_interface.ReportBridge(parent=host)
+
+    class FakeBox:
+        def __init__(self, *args):
+            self.yesButton = self.cancelButton = self
+
+        def setText(self, text):
+            pass
+
+        def exec(self):
+            return 0
+
+    monkeypatch.setattr(report_interface, "MessageBox", FakeBox)
+    assert bridge.confirm_delete({"started_at": T0, "course_name": "英語"}) is False

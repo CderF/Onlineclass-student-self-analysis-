@@ -1,7 +1,7 @@
 """
 #10 课程记录管理的专项验证（补充 tests/test_record_management.py）
 
-运行：在仓库根目录执行（会短暂弹出真实窗口，约 1 分钟）
+运行：在仓库根目录执行（会短暂弹出真实窗口并保持在最前，约 1 分钟）
     python test-scripts/verify_issue10_record_management.py
 
 检查项：
@@ -12,6 +12,9 @@
      记录继续写入、不出现「記録エラー」；停止并填写课程名后该课变为可操作
   4. 耗时：删除一节 90 分钟课程（5400 秒样本）从点击确认到列表刷新完成的时间
   5. 删除后的数据残留：检查数据库与 WAL 文件里是否还能找到已删除的课程名（只报告，不判失败）
+  6. 屏幕上的实际显示（#18）：对话框显示期间截取本窗口在屏幕上的实际画面（QScreen.grabWindow，本进程的窗口
+     不需要屏幕录制权限），对话框区域应与 Qt 自绘的结果一致（没有被网页盖住），网页背景按遮罩均匀变暗（约 0.70 倍）。
+     w.grab() 由 Qt 软件重绘，不反映网页（GPU 合成）与普通子控件的实际叠放，不能单独用来检查遮挡
 数据库写在临时目录，不碰 data/。任一检查失败时退出码为 1。
 """
 import os
@@ -141,6 +144,8 @@ def main(db: Path, shot_dir: Path):
     w = app_main.MainWindow()
     w.resize(1100, 850)
     w.show()
+    w.raise_()
+    w.activateWindow()
     report, m = w.reportInterface, w.monitorInterface
     target = report.webView.focusProxy() or report.webView
     driver = DialogDriver(w)
@@ -177,6 +182,47 @@ def main(db: Path, shot_dir: Path):
         r = rows(db, "SELECT course_name FROM sessions WHERE id = ?", sid)
         return r[0]["course_name"] if r else "<deleted>"
 
+    from PyQt5.QtCore import QPoint, QRect
+    on_screen = {}
+    bg_points = [(300, w.height() - 60), (w.width() - 200, w.height() - 60)]  # 网页透明背景（卡片与对话框之外）
+
+    def screen_image():
+        g = w.geometry()
+        return app.primaryScreen().grabWindow(0, g.x(), g.y(), g.width(), g.height())
+
+    def lum(img, x, y):
+        c = img.pixelColor(int(x * img.width() / w.width()), int(y * img.height() / w.height()))
+        return (c.red() + c.green() + c.blue()) / 3
+
+    def before_dialog():
+        img = screen_image().toImage()
+        on_screen["bg_before"] = [lum(img, x, y) for x, y in bg_points]
+
+    def capture_screen(d, name):
+        """在对话框的事件循环里：截取屏幕上的实际画面，与 Qt 自绘结果比较对话框区域"""
+        QTest.qWait(500)  # 等淡入动画结束
+        shot = screen_image()
+        shot.save(str(shot_dir / f"{name}_screen.png"))
+        s_img, g_img = shot.toImage(), w.grab().toImage()
+        r = QRect(d.widget.mapTo(w, QPoint(0, 0)), d.widget.size())
+        diff = n = 0
+        for y in range(r.top() + 4, r.bottom() - 4, 4):
+            for x in range(r.left() + 4, r.right() - 4, 4):
+                a = s_img.pixelColor(int(x * s_img.width() / w.width()), int(y * s_img.height() / w.height()))
+                b = g_img.pixelColor(int(x * g_img.width() / w.width()), int(y * g_img.height() / w.height()))
+                diff += abs(a.red() - b.red()) + abs(a.green() - b.green()) + abs(a.blue() - b.blue())
+                n += 1
+        ratio = [lum(s_img, x, y) / b0 for (x, y), b0 in zip(bg_points, on_screen["bg_before"])]
+        on_screen[name] = {"diff": diff / n / 3, "ratio": ratio, "page_hidden": not report.webView.isVisible()}
+
+    def check_screen(name, label):
+        res = on_screen.get(name, {})
+        ok = (res.get("diff", 99) < 3 and all(0.65 <= v <= 0.75 for v in res.get("ratio", [0]))
+              and res.get("page_hidden") and report.webView.isVisible() and not report.snapshot.isVisible())
+        check(f"屏幕实际显示：{label}在最上层、网页背景按遮罩变暗，关闭后网页恢复（#18）", ok,
+              f"对话框区域与自绘差 {res.get('diff', -1):.2f}，背景亮度比 {[round(v, 3) for v in res.get('ratio', [])]}；"
+              f"截图 {shot_dir / (name + '_screen.png')}")
+
     print("\n[1] 真实对话框：改课程名")
     click(target, point("#tab-manage"))
     QTest.qWait(500)
@@ -192,14 +238,15 @@ def main(db: Path, shot_dir: Path):
         def act(d):
             got["prefill"], got["title"] = d.nameBox.text(), d.titleLabel.text()
             got["items"] = [d.nameBox.itemText(i) for i in range(d.nameBox.count())]
-            QTest.qWait(500)
-            w.grab().save(str(shot_dir / "rename_dialog.png"))
+            capture_screen(d, "rename_dialog")
             d.nameBox.setText(text)          # QTest.keyClicks 不能输入日语
             QTest.mouseClick(d.yesButton, 1)
         return act
 
     driver.expect(rename_to("線形代数 第2回"))
+    before_dialog()
     state = press(button(a, "rename"))
+    check_screen("rename_dialog", "改名对话框")
     check("改名对话框由页面弹出：标题、预填当前课程名、可选用过的课程名",
           got.get("title") == "授業名を変更" and got.get("prefill") == "線形代数"
           and set(got.get("items", [])) == {"線形代数", "英語", "統計学", "削除テスト用の長い授業"}, str(got))
@@ -227,12 +274,13 @@ def main(db: Path, shot_dir: Path):
     def cancel(d):
         msg["title"], msg["content"] = d.titleLabel.text(), d.content   # contentLabel 是 TextWrap 重排后的文字
         msg["yes"], msg["no"] = d.yesButton.text(), d.cancelButton.text()
-        QTest.qWait(500)  # 等淡入动画结束再截图
-        w.grab().save(str(shot_dir / "delete_dialog.png"))
+        capture_screen(d, "delete_dialog")
         QTest.mouseClick(d.cancelButton, 1)
 
     driver.expect(cancel)
+    before_dialog()
     state = press(button(c, "delete"))
+    check_screen("delete_dialog", "删除确认框")
     started = time.strftime("%Y/%m/%d %H:%M", time.localtime(rows(db, "SELECT started_at FROM sessions WHERE id = ?", c)[0]["started_at"]))
     check("删除确认框写明日时与课程名、不可恢复", msg.get("title") == "この記録を削除しますか？"
           and msg.get("content") == f"{started}　統計学\nこの授業の記録をすべて削除します。\n元に戻すことはできません。"

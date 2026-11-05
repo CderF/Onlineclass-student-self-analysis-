@@ -1,5 +1,5 @@
 """
-macOS 菜单栏（#21）。只在 darwin 上生效，其他平台上各函数什么也不做。
+macOS 菜单栏（#21–#23）。只在 darwin 上生效，其他平台上各函数什么也不做。
 
 - 菜单栏中加粗的程序名：用 `python main.py` 启动时为 python。`set_app_name` 在创建 QApplication 之前
   改写 bundle 信息中的程序名（非官方做法，失败时只打印日志）。
@@ -25,6 +25,22 @@ class MenuTarget(Protocol):
     def show_about(self) -> None: ...
 
     def quit_app(self) -> None: ...
+
+    def edit(self, command: str) -> None: ...          # EDIT_COMMANDS 之一，作用于有焦点的控件
+
+    def show_monitor(self) -> None: ...
+
+    def show_report(self) -> None: ...
+
+    def toggle_sidebar(self) -> None: ...
+
+    def minimize_window(self) -> None: ...
+
+    def zoom_window(self) -> None: ...
+
+    def toggle_full_screen(self) -> None: ...
+
+    def close_window(self) -> None: ...
 
 
 def is_mac() -> bool:
@@ -96,7 +112,69 @@ def build_menu_bar(target: MenuTarget, parent: Optional[QWidget] = None) -> Opti
     quit_action.setShortcut(QKeySequence("Ctrl+Q"))   # macOS 上 Ctrl 即 ⌘
     quit_action.triggered.connect(target.quit_app)
     app_menu.addAction(quit_action)
+
+    # 编辑（#23）：快捷键与 macOS 标准一致；作用于有焦点的输入框或报告页
+    edit_menu = bar.addMenu("編集")
+    for command, text, key in EDIT_COMMANDS:
+        _add_item(edit_menu, text, lambda checked=False, c=command: target.edit(c), key)
+
+    # 表示（#23）：与点击侧边导航 / ☰ 相同
+    view_menu = bar.addMenu("表示")
+    _add_item(view_menu, "モニター", target.show_monitor, "Ctrl+1")
+    _add_item(view_menu, "分析レポート", target.show_report, "Ctrl+2")
+    view_menu.addSeparator()
+    _add_item(view_menu, "サイドバーを表示/非表示", target.toggle_sidebar)
+
+    # ウインドウ（#22）。⌃ 在 Qt 中写作 Meta
+    window_menu = bar.addMenu("ウインドウ")
+    _add_item(window_menu, "しまう", target.minimize_window, "Ctrl+M")
+    _add_item(window_menu, "拡大/縮小", target.zoom_window)
+    _add_item(window_menu, "フルスクリーンにする", target.toggle_full_screen, "Meta+Ctrl+F")
+    window_menu.addSeparator()
+    _add_item(window_menu, "閉じる", target.close_window, "Ctrl+W")
     return bar
+
+
+# (命令, 菜单文字, 快捷键)；命令名即 QLineEdit 等文字控件的同名槽
+EDIT_COMMANDS = [
+    ("undo", "取り消す", "Ctrl+Z"),
+    ("cut", "カット", "Ctrl+X"),
+    ("copy", "コピー", "Ctrl+C"),
+    ("paste", "ペースト", "Ctrl+V"),
+    ("selectAll", "すべてを選択", "Ctrl+A"),
+]
+
+
+def _add_item(menu, text: str, slot, shortcut: Optional[str] = None) -> QAction:
+    action = QAction(text, menu)
+    action.setMenuRole(QAction.NoRole)   # 不让 Qt 按文字猜测角色、把它移进应用菜单
+    if shortcut:
+        action.setShortcut(QKeySequence(shortcut))
+    action.triggered.connect(slot)
+    menu.addAction(action)
+    return action
+
+
+def apply_edit(widget: Optional[QWidget], command: str) -> bool:
+    """
+    对有焦点的控件执行编辑命令。文字控件（QLineEdit、qfluentwidgets 的输入框等）调用同名槽；
+    报告页的 QWebEngineView 获得焦点的是它内部的子控件，沿父控件找到它，交给网页执行。
+    没有可执行的控件时返回 False。
+    """
+    from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineView
+    page_actions = {"undo": QWebEnginePage.Undo, "cut": QWebEnginePage.Cut, "copy": QWebEnginePage.Copy,
+                    "paste": QWebEnginePage.Paste, "selectAll": QWebEnginePage.SelectAll}
+    w = widget
+    while w is not None:
+        if isinstance(w, QWebEngineView):
+            w.page().triggerAction(page_actions[command])
+            return True
+        w = w.parentWidget()
+    slot = getattr(widget, command, None) if widget is not None else None
+    if callable(slot):
+        slot()
+        return True
+    return False
 
 
 def about_panel_options() -> dict:

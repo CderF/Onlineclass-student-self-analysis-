@@ -107,6 +107,73 @@ def ocr(path: str) -> list:
     return [str(r.topCandidates_(1)[0].string()) for r in (request.results() or [])]
 
 
+# ---------- 子进程中的原生操作（#22–#24 的脚本通过 exec 命令复用）----------
+
+KEY_CODES = {"a": 0, "f": 3, "z": 6, "x": 7, "c": 8, "v": 9, "q": 12, "w": 13, "1": 18, "2": 19, "m": 46}
+
+
+def send_key(char: str, *modifiers: str) -> None:
+    """向 NSApp 发送一次真实的按键事件（与用户按键走同一条路径：菜单快捷键 → 窗口）。modifiers: cmd / ctrl / opt / shift"""
+    import AppKit
+    flags = 0
+    for m in modifiers:
+        flags |= {"cmd": AppKit.NSEventModifierFlagCommand, "ctrl": AppKit.NSEventModifierFlagControl,
+                  "opt": AppKit.NSEventModifierFlagOption, "shift": AppKit.NSEventModifierFlagShift}[m]
+    window = AppKit.NSApp.keyWindow()
+    event = AppKit.NSEvent.keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode_(
+        AppKit.NSEventTypeKeyDown, (0, 0), flags, 0, window.windowNumber() if window else 0,
+        None, char, char, False, KEY_CODES[char])
+    AppKit.NSApp.sendEvent_(event)
+
+
+def double_click(widget, x: float, y: float) -> None:
+    """在窗口坐标 (x, y)（左上角为原点）投递真实的原生双击事件"""
+    import AppKit
+    from app import mac_window
+    ns = mac_window.ns_window(widget)
+    location = (x, ns.contentView().frame().size.height - y)
+    for count in (1, 2):
+        for kind in (AppKit.NSEventTypeLeftMouseDown, AppKit.NSEventTypeLeftMouseUp):
+            event = AppKit.NSEvent.mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure_(
+                kind, location, 0, time.monotonic(), ns.windowNumber(), None, 0, count,
+                1.0 if kind == AppKit.NSEventTypeLeftMouseDown else 0.0)
+            AppKit.NSApp.postEvent_atStart_(event, False)
+
+
+def native_menu(title: str):
+    """菜单栏中标题为 title 的原生菜单（应用菜单的标题为 Apple），并按打开菜单时的方式校验各项"""
+    import AppKit
+    main_menu = AppKit.NSApp.mainMenu()
+    for i in range(main_menu.numberOfItems()):
+        item = main_menu.itemAtIndex_(i)
+        if str(item.title()) == title:
+            item.submenu().update()
+            return item.submenu()
+    return None
+
+
+def native_menu_items(title: str) -> list:
+    """[名称, 快捷键字符, 修饰键, 是否隐藏, 是否可用]（不含分隔线）"""
+    menu = native_menu(title)
+    items = []
+    for i in range(menu.numberOfItems()):
+        it = menu.itemAtIndex_(i)
+        if not it.isSeparatorItem():
+            items.append([str(it.title()), str(it.keyEquivalent()), modifiers_text(it.keyEquivalentModifierMask()),
+                          bool(it.isHidden()), bool(it.isEnabled())])
+    return items
+
+
+def click_menu_item(title: str, item_title: str) -> bool:
+    """像用户点菜单项一样触发原生菜单项"""
+    menu = native_menu(title)
+    for i in range(menu.numberOfItems()):
+        if str(menu.itemAtIndex_(i).title()) == item_title:
+            menu.performActionForItemAtIndex_(i)
+            return True
+    return False
+
+
 class Controller:
     def __init__(self, app, w, db):
         from PyQt5.QtCore import QSocketNotifier, QTimer
@@ -128,10 +195,7 @@ class Controller:
 
     def _app_menu(self):
         """应用菜单；先按打开菜单时的方式重新校验各项是否可用（NSMenu 的 enabled 只在校验时更新）"""
-        import AppKit
-        menu = AppKit.NSApp.mainMenu().itemAtIndex_(0).submenu()
-        menu.update()
-        return menu
+        return native_menu("Apple")
 
     def _on_command(self):
         import AppKit
@@ -145,17 +209,24 @@ class Controller:
         cmd = line.split()
         m = self.w.monitorInterface
         extra = {}
-        if cmd[0] == "click":
+        if cmd[0] == "exec":
+            # exec <JSON 字符串>：在子进程中执行一段代码，把变量 result（须可序列化为 JSON）带回。
+            # 命名空间在各次 exec 之间保留，前一次定义的变量和函数后面可以直接用
+            if not hasattr(self, "namespace"):
+                self.namespace = {"w": self.w, "app": self.app, "QTest": QTest, "Qt": Qt, "AppKit": AppKit,
+                                  "send_key": send_key, "double_click": double_click,
+                                  "native_menu_items": native_menu_items, "click_menu_item": click_menu_item}
+            namespace = self.namespace
+            namespace["result"] = None
+            try:
+                exec(json.loads(line[len("exec "):]), namespace)
+                extra = {"result": namespace["result"]}
+            except Exception as e:
+                extra = {"error": f"{type(e).__name__}: {e}"}
+        elif cmd[0] == "click":
             QTest.mouseClick({"start": m.startBtn, "pause": m.pauseBtn}[cmd[1]], Qt.LeftButton)
         elif cmd[0] == "menu":
-            menu = self._app_menu()
-            items = []
-            for i in range(menu.numberOfItems()):
-                it = menu.itemAtIndex_(i)
-                if not it.isSeparatorItem():
-                    items.append([str(it.title()), str(it.keyEquivalent()),
-                                  modifiers_text(it.keyEquivalentModifierMask()), bool(it.isHidden()),
-                                  bool(it.isEnabled())])
+            items = native_menu_items("Apple")
             bars = self.w.findChildren(QMenuBar)
             extra = {"items": items, "menubar_widgets": len(bars), "menubar_visible": any(b.isVisible() for b in bars)}
         elif cmd[0] == "menubar":
@@ -185,11 +256,7 @@ class Controller:
             extra = {"panels": len(panels), "texts": texts, "shot": shot}
         elif cmd[0] == "cmdq":
             self._reply({"quitting": True})
-            event = AppKit.NSEvent.keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode_(
-                AppKit.NSEventTypeKeyDown, (0, 0), AppKit.NSEventModifierFlagCommand, 0,
-                AppKit.NSApp.keyWindow().windowNumber() if AppKit.NSApp.keyWindow() else 0,
-                None, "q", "q", False, 12)
-            AppKit.NSApp.sendEvent_(event)
+            send_key("q", "cmd")
             return
         self._reply(extra)
 
@@ -197,8 +264,10 @@ class Controller:
 # ---------- 父进程 ----------
 
 class App:
+    """一个真实的 main.py 进程（子进程入口为本脚本的 --child）"""
+
     def __init__(self, db: Path, name: str):
-        self.err = open(Path(tempfile.gettempdir()) / f"verify_issue21_{name}.err", "w")
+        self.err = open(Path(tempfile.gettempdir()) / f"verify_mac_{name}.err", "w")
         self.proc = subprocess.Popen([sys.executable, str(SELF), "--child", str(db)], cwd=ROOT, text=True,
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.err)
         self.lines = queue.Queue()
@@ -222,6 +291,15 @@ class App:
         self.proc.stdin.write(cmd + "\n")
         self.proc.stdin.flush()
         return self.state(timeout)
+
+    def run(self, code: str, timeout=60):
+        """在子进程中执行代码，返回其中变量 result 的值；出错时抛出 RuntimeError"""
+        s = self.send("exec " + json.dumps(code), timeout)
+        if s is None:
+            raise RuntimeError("子进程没有回应（可能已退出）")
+        if "error" in s:
+            raise RuntimeError(s["error"])
+        return s.get("result")
 
     def wait_exit(self, timeout=30):
         try:

@@ -11,7 +11,7 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 # Import our custom interfaces
-from app import mac_menu, session_store
+from app import mac_menu, mac_window, session_store
 from app.single_instance import SingleInstance
 from app.view.monitor_interface import MonitorInterface
 from app.view.report_interface import ReportInterface  # 同时导入 QtWebEngineWidgets，必须早于创建 QApplication
@@ -85,6 +85,10 @@ class MainWindow(FluentWindow):
         title_layout.insertSpacing(3, 8)  # ☰ 与窗口标题之间
         # 红黄绿的中心约在 y=21，且不能再往下移（会被 28px 高的系统标题栏裁掉），这一行改为对齐它
         title_layout.setContentsMargins(0, 0, 0, self.MAC_TITLE_ROW_BOTTOM_INSET)
+        # 双击标题栏按系统设置执行（#24）；库固定为最大化 / 还原。双击可用的 ← ☰ 不触发
+        self.titleBar.setDoubleClickEnabled(False)
+        self.titleBar.installEventFilter(mac_window.TitleBarDoubleClickFilter(
+            self.titleBar, self.on_title_double_click, (panel.returnButton, panel.menuButton)))
         margins = panel.vBoxLayout.contentsMargins()
         panel.vBoxLayout.setContentsMargins(margins.left(), self.MAC_NAV_TOP, margins.right(), margins.bottom())
 
@@ -108,6 +112,46 @@ class MainWindow(FluentWindow):
     def quit_app(self):
         """⌘Q：与红色按钮一样走 closeEvent，课程记录照常保存；最后一个窗口关闭后程序退出"""
         self.close()
+
+    # ---- macOS 菜单与标题栏触发的窗口操作（mac_menu.MenuTarget）----
+
+    def edit(self, command: str):
+        mac_menu.apply_edit(QApplication.focusWidget(), command)
+
+    def show_monitor(self):
+        self.switchTo(self.monitorInterface)   # 与点击侧边导航相同
+
+    def show_report(self):
+        self.switchTo(self.reportInterface)
+
+    def toggle_sidebar(self):
+        self.navigationInterface.toggle()      # 与点击 ☰ 相同
+
+    def minimize_window(self):
+        self.showMinimized()
+
+    def zoom_window(self):
+        if not self.isFullScreen():
+            mac_window.zoom(self)
+
+    def toggle_full_screen(self):
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
+
+    def close_window(self):
+        """⌘W：只有这一个窗口，与红色按钮一样关闭并退出"""
+        self.close()
+
+    def on_title_double_click(self):
+        if self.isFullScreen():
+            return  # 全屏时双击标题栏没有效果（与系统一致）
+        action = mac_window.double_click_action(*mac_window.read_double_click_preference())
+        if action == mac_window.ZOOM:
+            self.zoom_window()
+        elif action == mac_window.MINIMIZE:
+            self.minimize_window()
 
     def bring_to_front(self):
         """再次启动程序时调出已开的窗口（#13）：最小化的恢复，并放到最前面"""

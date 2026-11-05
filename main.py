@@ -11,7 +11,7 @@ from qfluentwidgets import (
 )
 from qfluentwidgets import FluentIcon as FIF
 # Import our custom interfaces
-from app import session_store
+from app import mac_menu, session_store
 from app.single_instance import SingleInstance
 from app.view.monitor_interface import MonitorInterface
 from app.view.report_interface import ReportInterface  # 同时导入 QtWebEngineWidgets，必须早于创建 QApplication
@@ -48,6 +48,7 @@ class MainWindow(FluentWindow):
         self.initNavigation()
         if IS_MAC:
             self._init_mac_title_row()
+            self.mac_menu_bar = mac_menu.build_menu_bar(self, self)
 
         # Optional: Set initial theme
         # setTheme(Theme.DARK)
@@ -100,6 +101,13 @@ class MainWindow(FluentWindow):
         # 库把标题栏放在导航栏右侧（x=46）；mac 上标题栏占满整行，← ☰ 在其中
         self.titleBar.move(0, 0)
         self.titleBar.resize(self.width(), self.titleBar.height())
+
+    def show_about(self):
+        mac_menu.show_about_panel()
+
+    def quit_app(self):
+        """⌘Q：与红色按钮一样走 closeEvent，课程记录照常保存；最后一个窗口关闭后程序退出"""
+        self.close()
 
     def bring_to_front(self):
         """再次启动程序时调出已开的窗口（#13）：最小化的恢复，并放到最前面"""
@@ -167,7 +175,9 @@ if __name__ == "__main__":
     except AttributeError:
         pass  # 兼容低版本的 PyQt5
 
+    mac_menu.set_app_name()  # 菜单栏中的程序名，必须早于创建 QApplication（#21）
     app = QApplication(sys.argv)
+    mac_menu.install_translator(app)
 
     # 界面为日语：PingFang SC 会把日语汉字显示成中文字形，改用 Hiragino Sans
     app.setFont(QFont("Hiragino Sans", 10))

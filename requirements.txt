@@ -2,6 +2,8 @@
 PyQt5==5.15.11
 PyQt5-Qt5==5.15.17
 PyQt-Fluent-Widgets==1.11.1
+# macOS 菜单栏中的程序名与关于面板（app/mac_menu.py）直接使用 Foundation / AppKit；原为窗口库的间接依赖
+pyobjc-framework-Cocoa==12.0; sys_platform == "darwin"
 # 报告页（QWebEngineView + 本地 ECharts）；PyQtWebEngine-Qt5 必须与 PyQt5-Qt5 版本一致
 PyQtWebEngine==5.15.7
 PyQtWebEngine-Qt5==5.15.17

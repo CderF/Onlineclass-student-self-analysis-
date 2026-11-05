@@ -59,8 +59,15 @@
 | 主观评价在程序内采集还是用外部问卷（导出数据带课程 ID 和时间戳，两者都能对齐） | 作者 | 实验设计时 |
 | 三类问题时段的判定阈值与窗口长度（初始值已定，见 `app/problem_segments.py` 的 `ProblemConfig` 与 `README.md`「问题时段判定」，#7） | 作者 | 实验后调整 |
 
-## 与现有代码的关系（现状）
+## 实现情况（2026-11-05，#2 的子任务 #3–#18 已全部完成）
 
-- `ReportInterface` 为占位，`load_session_data` / `render_charts` 未实现。
-- 监控页每帧产生的分数、状态、警报只通过 `pyqtSignal` 推给界面，**目前没有任何持久化**，也没有传给报告页的通道。
-- 现在每次 Start 都会新建 `CameraThread`（连同 `AttentionAnalyzer`），没有暂停概念；暂停时的行为已在第 1 节确定（2026-10-26）。
+| 需求 | 实现 | Issue |
+|---|---|---|
+| 1. 课程记录（开始 / 暂停 / 继续 / 终了、课程名、边记录边写入、异常退出标为「未正常结束」） | `app/camera_thread.py`、`app/session_recorder.py`、`app/view/monitor_interface.py` | #4、#12、#13、#14、#15 |
+| 2. 数据（每秒汇总 + 事件日志，SQLite 单文件，只存数值） | `app/session_store.py`（结构见 `docs/adr/0002-session-storage-schema.md`） | #3、#17 |
+| 3. 报告页：单节课曲线与事件、问题时段高亮、多节课汇总、文字反馈 | `app/view/report_interface.py` + `app/view/web/`、`app/problem_segments.py`、`app/feedback.py` | #5–#9、#16、#18 |
+| 4. 记录管理：列表、删除、改课程名、CSV 导出 | `app/view/web/report.js`「記録の管理」、`app/export_csv.py` | #10、#11 |
+
+整条链路（课中记录 → 课后回看 → 分析 → 文字反馈 → 导出 → 重启后保留）的端到端验证：`test-scripts/verify_issue2_end_to_end.py`。
+
+编写本文档时（2026-10-23）的出发点：报告页为占位，监控页的分数、状态、警报只经 `pyqtSignal` 推给界面，没有任何持久化，也没有暂停概念。

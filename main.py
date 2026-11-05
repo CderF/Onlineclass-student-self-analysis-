@@ -1,6 +1,7 @@
 import sys
 from typing import Optional
 
+from PyQt5 import sip
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QIcon, QFont
@@ -27,6 +28,9 @@ class MainWindow(FluentWindow):
         # Window Configuration
         self.setWindowTitle("学習エンゲージメント自己分析")
         self.resize(1100, 750)
+        # 关闭时销毁（#14）：留到解释器退出时，由 PyQt 的清理在遍历包装对象的途中销毁主窗口，
+        # 销毁过程中运行的 Python 代码（qfluentwidgets 的事件过滤器、destroyed 槽）会改动正在遍历的表，偶发 SIGSEGV
+        self.setAttribute(Qt.WA_DeleteOnClose)
 
         # Create Sub-Interfaces
         self.monitorInterface = MonitorInterface(self)
@@ -140,4 +144,8 @@ if __name__ == "__main__":
     instance.activated.connect(w.bring_to_front)
     w.show()
 
-    sys.exit(app.exec())
+    code = app.exec()
+    if not sip.isdeleted(w):   # 未经关闭窗口就退出（如 app.quit()）：同样先保存记录，再在解释器清理前销毁（#14）
+        w.close()
+        sip.delete(w)
+    sys.exit(code)

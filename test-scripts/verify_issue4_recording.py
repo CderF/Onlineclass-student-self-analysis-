@@ -26,8 +26,6 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)  # ExpressionClassifier 以相对路径加载 weights/best.pt
 
 failures = []
-# QApplication 保持到进程退出：随函数返回释放时，PyQt 清理偶发 SIGSEGV（#14）
-KEEP_ALIVE = []
 
 
 def check(name, cond, detail=""):
@@ -88,10 +86,10 @@ def end_to_end(db: Path):
     camera = install_fake_camera()
 
     import main
+    from PyQt5 import sip
     from app.view.course_name_dialog import CourseNameDialog
 
     app = QApplication.instance() or QApplication(sys.argv)
-    KEEP_ALIVE.append(app)
     app.setFont(QFont("Hiragino Sans", 10))
     setFontFamilies(["Hiragino Sans", "Segoe UI"])
     w = main.MainWindow()
@@ -150,10 +148,12 @@ def end_to_end(db: Path):
     QTest.qWait(5500)
     QTest.mouseClick(m.pauseBtn, 1)
     QTest.qWait(500)
+    asked = []
+    m._ask_course_name = lambda names: asked.append(names)   # 不弹真实对话框，只记录是否询问
     w.close()
     QTest.qWait(500)
-    check("关闭窗口时没有弹出课程名对话框", not w.findChildren(CourseNameDialog) or
-          all(not d.isVisible() for d in w.findChildren(CourseNameDialog)))
+    check("关闭窗口时没有弹出课程名对话框", asked == [], str(asked))
+    check("关闭窗口后主窗口被销毁（#14：不留给退出清理）", sip.isdeleted(w))
 
     sessions = rows(db, "SELECT * FROM sessions ORDER BY id")
     check("共两条课程记录且都正常结束", [s["status"] for s in sessions] == ["completed", "completed"],
@@ -269,4 +269,4 @@ if __name__ == "__main__":
         end_to_end(Path(d) / "e2e.db")
         real_crash(Path(d) / "crash.db")
     print("\nRESULT:", "ALL PASS" if not failures else f"{len(failures)} FAILED: {failures}", flush=True)
-    os._exit(1 if failures else 0)  # 跳过解释器清理：PyQt 退出清理偶发 SIGSEGV（#14）
+    sys.exit(1 if failures else 0)

@@ -28,8 +28,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 os.chdir(ROOT)  # ExpressionClassifier 以相对路径加载 weights/best.pt
 
 failures = []
-# QApplication 保持到进程退出：随函数返回释放时，PyQt 清理偶发 SIGSEGV（#14）
-KEEP_ALIVE = []
 DAY = 86400
 
 
@@ -155,7 +153,6 @@ def main(db: Path, perf_db: Path, out: Path):
     camera = v4.install_fake_camera()
 
     app = QApplication.instance() or QApplication(sys.argv)
-    KEEP_ALIVE.append(app)
     app.setFont(QFont("Hiragino Sans", 10))
     setFontFamilies(["Hiragino Sans", "Segoe UI"])
     w = app_main.MainWindow()
@@ -299,4 +296,4 @@ if __name__ == "__main__":
         out.mkdir()
         main(Path(d) / "export.db", Path(d) / "perf.db", out)
     print("\nRESULT:", "ALL PASS" if not failures else f"{len(failures)} FAILED: {failures}", flush=True)
-    os._exit(1 if failures else 0)  # 跳过解释器清理：PyQt 退出清理偶发 SIGSEGV（#14）
+    sys.exit(1 if failures else 0)

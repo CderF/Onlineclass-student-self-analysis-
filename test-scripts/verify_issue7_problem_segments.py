@@ -30,8 +30,6 @@ os.chdir(ROOT)  # ExpressionClassifier 以相对路径加载 weights/best.pt
 from app.problem_segments import DEFAULT_CONFIG, DISTRACTION, DOUBT, FATIGUE, detect  # noqa: E402
 
 failures = []
-# QApplication 保持到进程退出：随函数返回释放时，PyQt 清理偶发 SIGSEGV（#14）
-KEEP_ALIVE = []
 COLORS = {DOUBT: (0xEB, 0x68, 0x34), FATIGUE: (0x62, 0x50, 0xD6), DISTRACTION: (0x1B, 0xAF, 0x7A)}
 LABELS = {DOUBT: "理解不足の可能性", FATIGUE: "疲労", DISTRACTION: "注意散漫・離席"}
 
@@ -259,7 +257,6 @@ def in_window(db: Path, shot_dir: Path):
     camera = v4.install_fake_camera()
 
     app = QApplication.instance() or QApplication(sys.argv)
-    KEEP_ALIVE.append(app)
     app.setFont(QFont("Hiragino Sans", 10))
     setFontFamilies(["Hiragino Sans", "Segoe UI"])
     w = app_main.MainWindow()
@@ -364,5 +361,4 @@ if __name__ == "__main__":
         in_window(Path(d) / "problems.db", shot_dir)
     print(f"\n截图保存在：{shot_dir}")
     print("\nRESULT:", "ALL PASS" if not failures else f"{len(failures)} FAILED: {failures}", flush=True)
-    # 跳过解释器清理：PyQt 退出清理偶发 SIGSEGV（#14）
-    os._exit(1 if failures else 0)
+    sys.exit(1 if failures else 0)

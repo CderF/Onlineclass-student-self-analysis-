@@ -31,8 +31,6 @@ os.chdir(ROOT)  # ExpressionClassifier 以相对路径加载 weights/best.pt
 from verify_issue5_report import rows, run_js, switch_to_report, wait_state  # noqa: E402
 
 failures = []
-# QApplication 保持到进程退出：随函数返回释放时，PyQt 清理偶发 SIGSEGV（#14）
-KEEP_ALIVE = []
 
 GROUP_OF = {
     "head_down": "下向き・ノート", "taking_notes": "下向き・ノート", "hidden_notes": "下向き・ノート",
@@ -218,7 +216,6 @@ def main(db: Path, shot_dir: Path):
     camera = v4.install_fake_camera()
 
     app = QApplication.instance() or QApplication(sys.argv)
-    KEEP_ALIVE.append(app)
     app.setFont(QFont("Hiragino Sans", 10))
     setFontFamilies(["Hiragino Sans", "Segoe UI"])
     w = app_main.MainWindow()
@@ -345,5 +342,4 @@ if __name__ == "__main__":
         main(Path(d) / "chart.db", shot_dir)
     print(f"\n截图保存在：{shot_dir}")
     print("\nRESULT:", "ALL PASS" if not failures else f"{len(failures)} FAILED: {failures}", flush=True)
-    # 跳过解释器清理：PyQt 退出清理偶发 SIGSEGV（#14），否则检查全部通过时退出码也可能是 139
-    os._exit(1 if failures else 0)
+    sys.exit(1 if failures else 0)

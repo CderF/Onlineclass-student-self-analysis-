@@ -24,3 +24,6 @@
 | `verify_issue12_start_responsiveness.py` | #12 | 原生窗口真实 Qt 鼠标点「開始」：点击处理耗时、6 秒内界面线程单次最大阻塞（< 100 ms）与后台各阶段时间线（模型加载、打开摄像头、首帧）；模型在后台线程构造、暂停 / 继续不重复加载；表情模型加载失败时窗口出现「モデルエラー」提示且监控继续；`--real-camera` 用真实摄像头（需在有摄像头权限的终端里运行） |
 | `verify_issue13_single_instance.py` | #13 | 按真实启动流程（runpy 执行 `main.py`）启动多个进程：A 记录中（窗口最小化、Finder 在前台）时启动 B，B 立刻退出、A 的窗口恢复并成为前台程序、记录仍为 recording 且继续增加；A 暂停中启动 B 不受影响，继续后结束为 completed；A 被 SIGKILL 后 C 接管失效的锁并把 A 的记录标为 interrupted。屏幕锁定时退出码 2 |
 | `verify_issue14_exit.py` | #14 | 按真实启动流程反复运行 `main.py`（原生平台，`-X faulthandler`）：关闭窗口 / `app.quit()` / 记录中关闭窗口各 20 次（`--runs N`），全部退出码 0、无 Fatal Python error，记录全部保存为 completed；`--baseline` 关掉修复（不在关闭时销毁主窗口）作对照，预期出现退出码 139 |
+| `verify_issue20_mac_title_row.py` | #20 | 原生窗口（仅 macOS）：红黄绿（`NSWindow.standardWindowButton_`）在窗口左侧、截图中红色按钮可见（没有被系统标题栏裁掉）；← ☰ 在其右侧、同一行（垂直中心相差 ≤ 2px）、互不重叠；侧边导航从第二行开始。改变窗口尺寸、点 ☰ 展开侧边栏、点绿色按钮进入或退出全屏后仍然如此；全屏时 ← ☰ 可以点击；← 能返回上一页 |
+
+`verify_issue20` 需要截取屏幕。显示器休眠时截图全黑，进入全屏也会失败，可以用 `caffeinate -d` 运行脚本，让显示器保持常亮。

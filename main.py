@@ -2,7 +2,7 @@ import sys
 from typing import Optional
 
 from PyQt5 import sip
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QRect, QSize
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QIcon, QFont
 from qfluentwidgets import (
@@ -16,11 +16,19 @@ from app.single_instance import SingleInstance
 from app.view.monitor_interface import MonitorInterface
 from app.view.report_interface import ReportInterface  # 同时导入 QtWebEngineWidgets，必须早于创建 QApplication
 
+IS_MAC = sys.platform == "darwin"
+
 
 class MainWindow(FluentWindow):
     """
     Main Application Window containing the navigation sidebar.
     """
+
+    # macOS（#20）：红黄绿在左上角，← ☰ 紧接其右、同一行，侧边导航从第二行开始
+    MAC_SYSTEM_BUTTONS_X = 8        # 红黄绿区域的左边界
+    MAC_SYSTEM_BUTTONS_WIDTH = 75   # 红黄绿区域宽度（与库相同）
+    MAC_NAV_TOP = 48                # 侧边导航第一项的起始高度 = 标题栏高度
+    MAC_TITLE_ROW_BOTTOM_INSET = 6  # 标题栏一行的内容（← ☰ 标题）上移，与红黄绿垂直居中对齐
 
     def __init__(self):
         super().__init__()
@@ -38,6 +46,8 @@ class MainWindow(FluentWindow):
 
         # Initialize Navigation
         self.initNavigation()
+        if IS_MAC:
+            self._init_mac_title_row()
 
         # Optional: Set initial theme
         # setTheme(Theme.DARK)
@@ -61,6 +71,35 @@ class MainWindow(FluentWindow):
             "分析レポート",
             position=NavigationItemPosition.TOP
         )
+
+    def _init_mac_title_row(self):
+        """把导航栏顶部的 ← ☰ 移进标题栏、放在红黄绿右侧；导航项让出标题栏这一行"""
+        panel = self.navigationInterface.panel
+        title_layout = self.titleBar.hBoxLayout
+        title_layout.insertSpacing(0, self.MAC_SYSTEM_BUTTONS_X + self.MAC_SYSTEM_BUTTONS_WIDTH)
+        for i, button in enumerate((panel.returnButton, panel.menuButton)):
+            panel.topLayout.removeWidget(button)
+            title_layout.insertWidget(1 + i, button, 0, Qt.AlignVCenter)
+            button.show()  # 换父控件后需重新显示
+        title_layout.insertSpacing(3, 8)  # ☰ 与窗口标题之间
+        # 红黄绿的中心约在 y=21，且不能再往下移（会被 28px 高的系统标题栏裁掉），这一行改为对齐它
+        title_layout.setContentsMargins(0, 0, 0, self.MAC_TITLE_ROW_BOTTOM_INSET)
+        margins = panel.vBoxLayout.contentsMargins()
+        panel.vBoxLayout.setContentsMargins(margins.left(), self.MAC_NAV_TOP, margins.right(), margins.bottom())
+
+    def systemTitleBarRect(self, size: QSize) -> QRect:
+        """红黄绿的摆放区域（只在 macOS 上被调用）。库默认放在窗口右侧"""
+        if not IS_MAC:
+            return super().systemTitleBarRect(size)
+        return QRect(self.MAC_SYSTEM_BUTTONS_X, 0 if self.isFullScreen() else 8,
+                     self.MAC_SYSTEM_BUTTONS_WIDTH, size.height())
+
+    def resizeEvent(self, e):
+        if not IS_MAC:
+            return super().resizeEvent(e)
+        # 库把标题栏放在导航栏右侧（x=46）；mac 上标题栏占满整行，← ☰ 在其中
+        self.titleBar.move(0, 0)
+        self.titleBar.resize(self.width(), self.titleBar.height())
 
     def bring_to_front(self):
         """再次启动程序时调出已开的窗口（#13）：最小化的恢复，并放到最前面"""

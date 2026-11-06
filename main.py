@@ -39,6 +39,9 @@ class MainWindow(FluentWindow):
         # 关闭时销毁（#14）：留到解释器退出时，由 PyQt 的清理在遍历包装对象的途中销毁主窗口，
         # 销毁过程中运行的 Python 代码（qfluentwidgets 的事件过滤器、destroyed 槽）会改动正在遍历的表，偶发 SIGSEGV
         self.setAttribute(Qt.WA_DeleteOnClose)
+        # Windows 11：库默认开启 Mica（窗口背景透明，由系统绘制）；窗口中有 QWebEngineView 时系统不再绘制，
+        # 透明部分显示为黑色。改用库的不透明浅色背景（只在 Win11 上有作用）
+        self.setMicaEffectEnabled(False)
 
         # Create Sub-Interfaces
         self.monitorInterface = MonitorInterface(self)

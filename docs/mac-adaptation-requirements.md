@@ -1,17 +1,10 @@
 # macOS 适配需求文档
 
-> 整理日期：2026-11-05
+> 整理日期：2026-11-05；实现情况更新于 2026-11-06
 
 ## 一句话定位
 
 让程序在 macOS 上的窗口外观、窗口行为和菜单栏符合 mac 习惯；Windows 上保持现状。
-
-## 现状（调查结果）
-
-- 右上角的红黄绿三个按钮其实是 **macOS 原生按钮**；qfluentwidgets 自带的 Windows 风格按钮在 macOS 上已经隐藏。
-- 按钮出现在右上角，是 qfluentwidgets 的设计：`FluentWindowBase.systemTitleBarRect` 把系统按钮区域固定在窗口右侧（`size.width() - 75`）。原因是左上角已经放了导航栏的 ←（返回）和 ☰（展开 / 收起侧边栏），这一列宽 48px，而红黄绿约需 75px。
-- 菜单栏由 Qt 自动生成，只有一个英文的应用菜单（About〈脚本名〉、About Qt、Settings… ⌘,、Services、Hide、Hide Others、Show All、Quit ⌘Q），没有ウインドウ菜单和編集菜单。用 `python main.py` 启动时，菜单栏加粗的程序名显示为 python。
-- 绿色按钮进入系统全屏。双击标题栏由 qframelesswindow 处理，固定为最大化 / 还原，不读取系统设置。
 
 ## 已确认的需求
 
@@ -73,4 +66,36 @@
 
 ## 待定项
 
-无。Windows 端的回归确认由作者在实现完成后进行。
+无。
+
+## 实现情况（2026-11-06，#19 的子任务 #20–#25 已全部完成）
+
+| 需求 | 实现 | Issue |
+|---|---|---|
+| 2. 左上角布局：红黄绿、←、☰ 同一行，侧边导航从第二行开始 | `main.py` 的 `MainWindow`（重写 `systemTitleBarRect` / `resizeEvent`，`_init_mac_title_row` 把 ← ☰ 移进标题栏） | #20 |
+| 3. 窗口行为：绿色按钮、全屏中的 ← ☰ | 绿色按钮保持系统原生行为；全屏中布局不变 | #20 |
+| 3. 窗口行为：双击标题栏按系统设置执行 | `app/mac_window.py`（`double_click_action`、`TitleBarDoubleClickFilter`） | #24 |
+| 3. 窗口行为：红色按钮 / ⌘W / ⌘Q 直接退出，课程记录照常保存 | 都经过 `MainWindow.closeEvent` | #21、#22 |
+| 4. 菜单栏：程序名、应用菜单、关于面板 | `app/mac_menu.py`、`app/app_info.py`（程序名、版本号、说明文字） | #21 |
+| 4. 菜单栏：ウインドウ / 表示 / 編集 | `app/mac_menu.py`（菜单项调用 `MainWindow` 的窗口操作；编辑命令交给有焦点的输入框或报告页） | #22、#23 |
+| 5. 实现约束：不改库；pyobjc 加平台限定的版本锁定 | 只在项目代码中重写；`requirements.txt` 加入 `pyobjc-framework-Cocoa==12.0; sys_platform == "darwin"` | #21 |
+| 6. 验收 | pytest：`tests/test_mac_window.py`、`tests/test_mac_menu.py`；原生平台：`test-scripts/verify_issue20`–`verify_issue24`；mac 手动检查清单：`test-scripts/README.md` 末尾（作者确认全部通过）；Windows 手动回归（作者确认） | #20–#25 |
+
+与上面的需求不同、或需求中没有写明的地方：
+
+- **关于面板**：未打包成 `.app`，所以：
+  - 面板自带的版本行只能显示英文「Version」，因此留空，改在说明文字中写「バージョン 0.1.0」。
+  - 系统取到的程序图标是文件夹，改用系统通用的程序图标。
+- **显示 / 隐藏侧边栏**：菜单项名称为「サイドバーを表示/非表示」，没有快捷键。
+- **双击 ← / ☰**：按 macOS 工具栏的惯例处理。
+  - 按钮可用时，双击由按钮自己处理，不执行标题栏操作。
+  - 按钮不可用时（例如没有可返回的页面时的 ←），双击等同于双击标题栏。
+- **全屏时双击标题栏**：没有效果，与系统一致。
+- **Windows 回归中发现的兼容性问题**：已修复，均与 mac 适配无关。
+  - Windows 的 PyQtWebEngine 只有 Qt 5.15.2（Chromium 83），报告页用到的两项功能它不支持。改为补上 `replaceChildren`，并把 flex 布局的 `gap` 改为外边距（`f10e27d`）。
+  - Windows 11 上窗口背景显示为黑色，改为关闭 Mica（`576b23c`）。
+
+编写本文档时（2026-11-05）的出发点：
+- 红黄绿已经是 macOS 原生按钮，但 qfluentwidgets 把它们放在窗口右侧，因为左上角被 ← ☰ 占用。
+- 菜单栏由 Qt 自动生成，只有英文的应用菜单，程序名显示为 python。
+- 双击标题栏固定为最大化 / 还原。

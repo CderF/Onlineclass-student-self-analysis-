@@ -24,7 +24,9 @@ h1 { margin: 0; font-size: 28px; font-weight: 600; }
 h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
 .lead { margin: 6px 0 20px; color: var(--text-secondary); }
 
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--card-border); margin-bottom: 20px; }
+/* flex 布局的 gap 要 Chromium 84 起才支持（Windows 的 Qt 5.15.2 是 Chromium 83），用子元素外边距代替 */
+.tabs { display: flex; border-bottom: 1px solid var(--card-border); margin-bottom: 20px; }
+.tabs > * + * { margin-left: 4px; }
 .tabs button {
   border: none;
   background: none;
@@ -43,7 +45,8 @@ h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
   padding: 20px;
 }
 
-.toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.toolbar { display: flex; align-items: center; margin-bottom: 16px; }
+.toolbar > * + * { margin-left: 12px; }
 .toolbar select {
   min-width: 320px;
   padding: 6px 10px;
@@ -124,8 +127,8 @@ h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
 .row-action:disabled { color: var(--text-secondary); opacity: 0.5; cursor: default; }
 .notice { margin: 0 0 16px; padding: 10px 14px; border-radius: 6px; background: rgba(196, 43, 28, 0.08); color: var(--danger); overflow-wrap: anywhere; }
 .notice[data-tone="ok"] { background: rgba(0, 159, 170, 0.08); color: var(--text); }
-.card-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.card-header .row-action { margin-left: 0; }
+.card-header { display: flex; align-items: baseline; justify-content: space-between; }
+.card-header .row-action { margin-left: 12px; }
 
 /* 没有记录或读取失败时只显示提示 */
 body[data-state="empty"] .view,

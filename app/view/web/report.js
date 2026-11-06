@@ -2,6 +2,14 @@
 
 // 报告页：通过 QWebChannel 向 Python（ReportBridge）读取课程记录，图表用本地 ECharts 绘制
 
+// Windows 的 PyQtWebEngine-Qt5 只有 5.15.2（Chromium 83），没有 replaceChildren（Chromium 86 起）
+if (!Element.prototype.replaceChildren) {
+  Element.prototype.replaceChildren = function (...nodes) {
+    this.textContent = "";
+    this.append(...nodes);
+  };
+}
+
 const STATUS_LABELS = { recording: "記録中", completed: "終了", interrupted: "中断" };
 const FONT = getComputedStyle(document.documentElement).getPropertyValue("--font");
 

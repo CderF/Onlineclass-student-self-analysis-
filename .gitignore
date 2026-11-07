@@ -23,3 +23,6 @@ env/
 
 # 本地课程记录数据库（只存数值，但属于个人学习数据，不进版本控制）
 data/
+
+# 计算量评估的测试视频与模型输出缓存（含人脸，仓库公开，绝不提交；见 benchmarks/proposal.md）
+benchmarks/data/

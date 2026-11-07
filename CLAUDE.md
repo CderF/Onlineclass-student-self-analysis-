@@ -10,7 +10,7 @@ Research prototype for a paper (student self-analysis of engagement in online cl
 
 ## Environment & commands
 
-- Python env: conda env `demo` (Python 3.10) at `/Users/fang/Documents/Code/miniconda3/envs/demo/bin/python` (also set in `.vscode/settings.json`). The base `python3` on PATH is 3.13 and lacks the deps.
+- Python env: conda env `demo` (Python 3.10) at `~/Documents/Code/miniconda3/envs/demo/bin/python`. The interpreter path is machine-specific and is not committed: select it once in your editor (VS Code: *Python: Select Interpreter*) or set `python.defaultInterpreterPath` in your own user settings. The base `python3` on PATH is 3.13 and lacks the deps.
 - Pinned in that env: `mediapipe 0.9.2.1` (code uses the legacy `mp.solutions.face_mesh` API), `ultralytics 8.4.19`.
 - Report page stack (`docs/adr/0001-qt-echarts-report.md`): `PyQtWebEngine 5.15.7` with `PyQtWebEngine-Qt5==5.15.17`, which must match `PyQt5-Qt5`. ECharts 6.1.0 is vendored at `app/view/web/vendor/echarts/` and loaded from disk, never from a CDN. Import `PyQt5.QtWebEngineWidgets` before the `QApplication` is created.
 - The UI language is Japanese. The font is `Hiragino Sans`, set both via `app.setFont` and via qfluentwidgets `setFontFamilies` in `main.py`. PingFang SC would render Japanese kanji with Chinese glyph forms. Console `print`s stay in Chinese because they are developer-facing.

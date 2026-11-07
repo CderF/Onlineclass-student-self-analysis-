@@ -144,7 +144,7 @@ pip install mediapipe
 
 > **Mac M1/M2 芯片用户提示**：
 > 系统中已内置了 MPS 设备自动检测。如果需要显式利用 Apple Silicon 硬件加速，请直接安装支持 MPS 的 PyTorch 编译版本。
-> 本项目的 `yolo_inference.py` 中已包含 Windows 与 Posix 跨平台路径的反序列化补丁，完美支持 macOS 平台直接加载在 Windows 下训练的 YOLO 模型。
+> 本项目的 `app/yolo_inference.py` 中已包含 Windows 与 Posix 跨平台路径的反序列化补丁，完美支持 macOS 平台直接加载在 Windows 下训练的 YOLO 模型。
 
 ### 2. 权重部署
 请将表情分类权重文件（例如从 RAF-DB 训练导出的分类权重 `best.pt`）放置于项目根目录的 `weights/` 下：

@@ -41,9 +41,7 @@ class AttentionAnalyzer:
         self.eyes_closed_start_time = None  # 用于记录连续闭眼的起始时间
         self.perclos_val = 0.0
 
-        """
-            yolo类别索引待更改
-        """
+        # EMOTION_IDX 对应当前 best.pt（RAF-DB 7 类）；换成论文计划的 4 类迁移学习模型时需一并替换
         # 多模态融合时间戳滑动窗口（Yolo、MediaPipe疲劳检测）
         self.micro_buffer = deque()  # 3 秒微观表情概率: (now, all_probs_clean) 需更改
         self.perclos_buffer = deque()  # 8 秒疲劳特征缓冲: (now, ear, mar, delta_pitch)
@@ -217,9 +215,7 @@ class AttentionAnalyzer:
             while self.perclos_buffer and (now - self.perclos_buffer[0][0]) > 8.0:
                 self.perclos_buffer.popleft()
 
-            """
-            以下部分待修改，彻底舍弃7进4概率融合公式，改为使用Transfer Learning迁移学习
-            """
+            # 以下为 7 类 → 4 类认知状态的概率映射；接入 4 类迁移学习模型后整段改为直接使用模型输出
             # 提取纯概率数组进行平均计算
             probs_only = [item[1] for item in self.micro_buffer]
             avg_probs = np.mean(probs_only, axis=0)

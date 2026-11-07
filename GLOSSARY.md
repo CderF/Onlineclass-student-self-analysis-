@@ -22,7 +22,7 @@ _Avoid_：情绪、学习感情（论文日语原文「学習感情」仅在论�
 _Avoid_：疲劳度、perclos_val（代码变量名，实际含义是疲劳指数而不只是 PERCLOS）
 
 **参与度分数**：0–100 的整数，由疲劳指数与 60 秒窗口内认知状态的分布加权得到，再被低头 / 离席规则覆盖。日语界面用「エンゲージメント」。
-_Avoid_：注意力分数、Attention Score、专注度（界面现有的 "Attention" 字样待统一）
+_Avoid_：注意力分数、Attention Score、专注度（代码类名 `AttentionAnalyzer` 沿用旧称）
 
 **空间状态**：每帧由低头 / 面部丢失规则得出的代码，共 8 个——`normal` 正常、`head_down` 低头未满 15 秒、`taking_notes` 长时低头且低头前 ≥60 分、`distracted` 长时低头且 <60 分、`hidden_notes` 低头后面部丢失（5 秒内，或丢失前 ≥60 分）、`hidden_abnormal` 低头后面部丢失超过 5 秒且 <60 分、`away` 未低头时面部丢失 ≤120 秒、`absent` 面部丢失超过 120 秒。
 _Avoid_：状态文字（`status_text` 只用于显示，不作为数据）
